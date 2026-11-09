@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -29,6 +30,17 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import java.util.Locale
+
+enum class PhotoOrder(val label: String) { ORIGINAL("Selection order"), NAME_ASC("Name A–Z"), NAME_DESC("Name Z–A") }
+fun comparePhotoNames(a: String, b: String, order: PhotoOrder): Int {
+    val result = a.lowercase(Locale.ROOT).compareTo(b.lowercase(Locale.ROOT))
+    return when (order) {
+        PhotoOrder.NAME_ASC -> result
+        PhotoOrder.NAME_DESC -> -result
+        PhotoOrder.ORIGINAL -> 0
+    }
+}
 
 fun decodeImage(context: Context, uri: Uri, limit: Int): Bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
     val scale = minOf(1.0, limit.toDouble() / maxOf(info.size.width, info.size.height))
@@ -55,6 +67,12 @@ fun PhotosScreen(library: Boolean) {
     var photos by remember { mutableStateOf(listOf<PhotoRef>()) }
     var selected by remember { mutableStateOf<PhotoRef?>(null) }
     var query by remember { mutableStateOf("") }
+    var order by rememberSaveable { mutableStateOf(PhotoOrder.ORIGINAL) }
+    var sortMenu by remember { mutableStateOf(false) }
+    val visible = remember(photos, query, order) {
+        val filtered = photos.filter { it.name.contains(query, true) }
+        if (order == PhotoOrder.ORIGINAL) filtered else filtered.sortedWith { a, b -> comparePhotoNames(a.name, b.name, order) }
+    }
     fun store(values: List<PhotoRef>) {
         photos = values
         if (library) prefs.edit().putString("uris", JSONArray(values.map { it.uri.toString() }).toString()).apply()
@@ -80,9 +98,15 @@ fun PhotosScreen(library: Boolean) {
         AquaButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, enabled = !op.busy) { Text(if (library) "Add photos to collection" else "Open images") }
         Text(if (library) "A local collection of selected photo references. Removing a reference never deletes its original." else "Select images, then pinch to zoom and drag to pan. Rotation is a preview only.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Filter by name") }, singleLine = true)
+        Box {
+            TextButton(onClick = { sortMenu = true }) { Text("Sort: ${order.label} ▾") }
+            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                PhotoOrder.entries.forEach { choice -> DropdownMenuItem(text = { Text(choice.label) }, onClick = { order = choice; sortMenu = false }) }
+            }
+        }
         OperationStatus(op)
         LazyVerticalGrid(GridCells.Adaptive(112.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(photos.filter { it.name.contains(query, true) }, key = { it.uri.toString() }) { photo ->
+            items(visible, key = { it.uri.toString() }) { photo ->
                 Card(onClick = { selected = photo }) {
                     PhotoThumbnail(photo.uri, photo.name, Modifier.fillMaxWidth().aspectRatio(1f))
                     Text(photo.name, Modifier.padding(8.dp), maxLines = 2, style = MaterialTheme.typography.bodySmall)
@@ -101,7 +125,7 @@ fun PhotosScreen(library: Boolean) {
                 catch (e: Exception) { error = "Image cannot be decoded or access was revoked. Select it again." }
             }
             Surface(Modifier.fillMaxSize().systemBarsPadding()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(photo.name, style = MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { selected = null }) { Text("Close") }
@@ -109,6 +133,7 @@ fun PhotosScreen(library: Boolean) {
                         TextButton(onClick = { rotation = (rotation + 90f) % 360 }) { Text("Rotate") }
                     }
                     if (error.isNotEmpty()) Text(error)
+                    if (library) TextButton(onClick = { store(photos.filterNot { it.uri == photo.uri }); selected = null }) { Text("Remove reference (keep original)") }
                     Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF18212B)).pointerInput(photo.uri) {
                         detectTransformGestures { _, pan, scale, _ ->
                             zoom = (zoom * scale).coerceIn(1f, 6f)
@@ -119,12 +144,11 @@ fun PhotosScreen(library: Boolean) {
                     }
                     bitmap?.let { Text("Decoded preview: ${it.width} × ${it.height} · originals unchanged", style = MaterialTheme.typography.bodySmall) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val index = photos.indexOf(photo)
-                        AquaSecondaryButton(onClick = { selected = photos[index - 1] }, enabled = index > 0) { Text("Previous") }
+                        val index = visible.indexOf(photo)
+                        AquaSecondaryButton(onClick = { selected = visible[index - 1] }, enabled = index > 0) { Text("Previous") }
                         AquaSecondaryButton(onClick = { zoom = 1f; offset = Offset.Zero; rotation = 0f }) { Text("Fit") }
-                        AquaSecondaryButton(onClick = { selected = photos[index + 1] }, enabled = index >= 0 && index + 1 < photos.size) { Text("Next") }
+                        AquaSecondaryButton(onClick = { selected = visible[index + 1] }, enabled = index >= 0 && index + 1 < visible.size) { Text("Next") }
                     }
-                    if (library) TextButton(onClick = { store(photos.filterNot { it.uri == photo.uri }); selected = null }) { Text("Remove reference (keep original)") }
                 }
             }
         }
