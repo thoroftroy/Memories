@@ -42,6 +42,18 @@ fun comparePhotoNames(a: String, b: String, order: PhotoOrder): Int {
     }
 }
 
+/** Human-readable image details; unknown parts are omitted rather than invented. Pure for testing. */
+fun formatPhotoDetails(width: Int, height: Int, bytes: Long?, mime: String?): String {
+    val parts = mutableListOf<String>()
+    if (width > 0 && height > 0) parts += "$width × $height"
+    if (bytes != null && bytes >= 0) {
+        val size = if (bytes < 1024) "$bytes B" else if (bytes < 1024 * 1024) "${bytes / 1024} kB" else "${bytes / (1024 * 1024)} MB"
+        parts += size
+    }
+    if (!mime.isNullOrBlank()) parts += mime
+    return parts.joinToString(" · ").ifEmpty { "Details unavailable" }
+}
+
 fun decodeImage(context: Context, uri: Uri, limit: Int): Bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
     val scale = minOf(1.0, limit.toDouble() / maxOf(info.size.width, info.size.height))
     decoder.setTargetSize(maxOf(1, (info.size.width * scale).toInt()), maxOf(1, (info.size.height * scale).toInt()))
@@ -142,7 +154,16 @@ fun PhotosScreen(library: Boolean) {
                     }) {
                         bitmap?.let { Image(it.asImageBitmap(), photo.name, Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = offset.x; translationY = offset.y; rotationZ = rotation }, contentScale = ContentScale.Fit) }
                     }
-                    bitmap?.let { Text("Decoded preview: ${it.width} × ${it.height} · originals unchanged", style = MaterialTheme.typography.bodySmall) }
+                    val details by produceState("Reading details…", photo.uri, bitmap) {
+                        value = withContext(Dispatchers.IO) { runCatching {
+                            val cursor = context.contentResolver.query(photo.uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)
+                            val size = cursor?.use { if (it.moveToFirst()) it.getLong(0) else null }
+                            val type = context.contentResolver.getType(photo.uri)
+                            val image = bitmap
+                            formatPhotoDetails(image?.width ?: 0, image?.height ?: 0, size, type) + " · originals unchanged"
+                        }.getOrDefault("Details unavailable · originals unchanged") }
+                    }
+                    Text(details, style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         val index = visible.indexOf(photo)
                         AquaSecondaryButton(onClick = { selected = visible[index - 1] }, enabled = index > 0) { Text("Previous") }
