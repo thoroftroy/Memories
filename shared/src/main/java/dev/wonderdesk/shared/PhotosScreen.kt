@@ -1,6 +1,7 @@
 package dev.wonderdesk.shared
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -81,13 +82,39 @@ fun PhotosScreen(library: Boolean) {
     var query by remember { mutableStateOf("") }
     var order by rememberSaveable { mutableStateOf(PhotoOrder.ORIGINAL) }
     var sortMenu by remember { mutableStateOf(false) }
+    var deviceMode by rememberSaveable { mutableStateOf(false) }
     val visible = remember(photos, query, order) {
         val filtered = photos.filter { it.name.contains(query, true) }
         if (order == PhotoOrder.ORIGINAL) filtered else filtered.sortedWith { a, b -> comparePhotoNames(a.name, b.name, order) }
     }
     fun store(values: List<PhotoRef>) {
         photos = values
-        if (library) prefs.edit().putString("uris", JSONArray(values.map { it.uri.toString() }).toString()).apply()
+        if (library && !deviceMode) prefs.edit().putString("uris", JSONArray(values.map { it.uri.toString() }).toString()).apply()
+    }
+    fun loadDevicePhotos() {
+        op.run("Reading device photos", {
+            val out = mutableListOf<PhotoRef>()
+            runCatching {
+                context.contentResolver.query(
+                    android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    arrayOf(android.provider.MediaStore.Images.Media._ID, android.provider.MediaStore.Images.Media.DISPLAY_NAME),
+                    null, null, "${android.provider.MediaStore.Images.Media.DATE_ADDED} DESC"
+                )?.use { c ->
+                    val id = c.getColumnIndexOrThrow(android.provider.MediaStore.Images.Media._ID)
+                    val name = c.getColumnIndexOrThrow(android.provider.MediaStore.Images.Media.DISPLAY_NAME)
+                    while (c.moveToNext() && out.size < 500) {
+                        out += PhotoRef(
+                            android.content.ContentUris.withAppendedId(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, c.getLong(id)),
+                            c.getString(name) ?: "Photo"
+                        )
+                    }
+                }
+            }
+            out
+        }) { it ->
+            photos = it
+            op.notice("${it.size} photos on the phone (up to 500 newest).")
+        }
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(100)) { values ->
         if (values.isNotEmpty()) op.run("Loading selected photo references", {
@@ -107,8 +134,18 @@ fun PhotosScreen(library: Boolean) {
         }) { photos = it; op.notice("${it.size} saved references. Missing permissions require selecting the photo again.") }
     }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        AquaButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, enabled = !op.busy) { Text(if (library) "Add photos to collection" else "Open images") }
-        Text(if (library) "A local collection of selected photo references. Removing a reference never deletes its original." else "Select images, then pinch to zoom and drag to pan. Rotation is a preview only.", style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AquaButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, enabled = !op.busy) { Text(if (library) "Add photos to collection" else "Open images") }
+            if (library) AquaSecondaryButton(onClick = { deviceMode = true; loadDevicePhotos() }, enabled = !op.busy) { Text("All device photos") }
+            if (deviceMode) AquaSecondaryButton(onClick = {
+                deviceMode = false
+                op.run("Loading saved collection", {
+                    val saved = JSONArray(prefs.getString("uris", "[]"))
+                    (0 until saved.length()).map { Uri.parse(saved.getString(it)) }.map { uri -> PhotoRef(uri, context.displayName(uri)) }
+                }) { photos = it }
+            }) { Text("Back to collection") }
+        }
+        Text(if (deviceMode) "Every photo the phone has indexed, newest first. Tap to view, share or open in Wayfinder." else if (library) "A local collection of selected photo references. Removing a reference never deletes its original." else "Select images, then pinch to zoom and drag to pan. Rotation is a preview only.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Filter by name") }, singleLine = true)
         Box {
             TextButton(onClick = { sortMenu = true }) { Text("Sort: ${order.label} ▾") }
@@ -143,6 +180,10 @@ fun PhotosScreen(library: Boolean) {
                         TextButton(onClick = { selected = null }) { Text("Close") }
                         TextButton(onClick = { context.share(photo.uri, "image/*") { error = it } }) { Text("Share") }
                         TextButton(onClick = { rotation = (rotation + 90f) % 360 }) { Text("Rotate") }
+                        TextButton(onClick = {
+                            context.launchSafely(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName("dev.wonderdesk.wayfinder", "dev.wonderdesk.wayfinder.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), op::notice)
+                            selected = null
+                        }) { Text("Open in Wayfinder") }
                     }
                     if (error.isNotEmpty()) Text(error)
                     if (library) TextButton(onClick = { store(photos.filterNot { it.uri == photo.uri }); selected = null }) { Text("Remove reference (keep original)") }
