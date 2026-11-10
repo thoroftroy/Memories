@@ -1,6 +1,6 @@
 # Memories for Android
 
-Keeps a collection of photos you choose. By Rednave.
+Keeps a collection of photos you choose.
 
 ## Easiest install and updates
 
