@@ -252,9 +252,10 @@ private fun time(ms: Long) = (ms / 1000).let { "%d:%02d".format(it / 60, it % 60
 @Composable
 private fun Thumb(ph: Photo, modifier: Modifier, px: Int = 256) {
     val context = LocalContext.current
-    var b by remember(ph.id, px) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(ph.id, px) { b = withContext(Dispatchers.IO) { Gallery.thumb(context, ph, px) } }
-    Box(modifier.background(Color(0x22888888))) { b?.let { Image(it.asImageBitmap(), ph.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } }
+    var b by remember(ph.id, px) { mutableStateOf(Gallery.cached(ph, px)) }
+    LaunchedEffect(ph.id, px) { if (b == null) b = withContext(Gallery.loader) { Gallery.thumb(context, ph, px) } }
+    val img = remember(b) { b?.asImageBitmap() }
+    Box(modifier.background(Color(0x22888888))) { img?.let { Image(it, ph.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } }
 }
 
 /* -------------------------------------------------------- viewer -------------------------------------------- */

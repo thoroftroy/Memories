@@ -50,6 +50,11 @@ object Gallery {
     }
 
     private val thumbs = object : LruCache<String, Bitmap>(64 * 1024 * 1024) { override fun sizeOf(key: String, value: Bitmap) = value.byteCount }
+    fun cached(p: Photo, px: Int): Bitmap? = thumbs.get("${p.id}@$px")
+    /** A few decodes at a time: a fast fling doesn't pile up hundreds of reads. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val loader = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(4)
+
     fun thumb(c: Context, p: Photo, px: Int = 256): Bitmap? {
         val k = "${p.id}@$px"
         return thumbs.get(k) ?: runCatching { c.contentResolver.loadThumbnail(p.uri, Size(px, px), null) }.getOrNull()?.also { thumbs.put(k, it) }
