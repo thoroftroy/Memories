@@ -200,7 +200,10 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
             }
             if (base.isEmpty()) { EmptyState(if (q.isNotBlank()) "No matches" else if (tab == "favorites") "No favourites yet" else "Nothing here", if (tab == "favorites") "Tap the heart on any photo to keep it here." else "Photos you take or save appear here.", icon = WonderIcons.PhotoLibrary); return@Column }
             val groups = base.groupBy { it.day }
-            LazyVerticalGrid(GridCells.Fixed(columns), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // The size you pick is for portrait; landscape and tablets fit more of the same size across.
+            val conf = androidx.compose.ui.platform.LocalConfiguration.current
+            val across = (columns * conf.screenWidthDp / minOf(conf.screenWidthDp, conf.screenHeightDp).coerceAtLeast(1)).coerceIn(columns, 14)
+            LazyVerticalGrid(GridCells.Fixed(across), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 groups.forEach { (day, list) ->
                     item(span = { GridItemSpan(maxLineSpan) }, key = "d$day") {
                         Row(Modifier.padding(start = 12.dp, end = 8.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {

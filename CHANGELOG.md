@@ -1,5 +1,13 @@
 # Memories changelog
 
+## v0.5.0
+
+- New icon
+- The photo grid fits more photos across in landscape
+- Works properly in landscape: tabs move to a rail at the side so the content keeps its height, and screens that ran out of room now scroll
+- If the app ever crashes it says so next time it opens and offers to send a report (only the error, app version and phone model, with file names and links removed). Turn on automatic sending in Control Room › Wonderdesk
+- Lists can no longer crash when two items share a name
+
 ## v0.4.0
 
 - Setting a photo as your wallpaper no longer throws you out of the photo you were looking at
