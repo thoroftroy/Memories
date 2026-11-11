@@ -1,5 +1,12 @@
 # Memories changelog
 
+## v0.4.0
+
+- Setting a photo as your wallpaper no longer throws you out of the photo you were looking at
+- Set as wallpaper falls back to other apps if the system cropper isn't available
+- If the app ever crashes or freezes, a report goes to Control Room so it can be shared and fixed
+- App icon art is larger and fills its tile without being cut off
+
 ## v0.3.1
 
 - App icon redrawn so nothing is cut off: round icons fill the space, the rest sit on an Aqua tile

@@ -83,6 +83,13 @@ private val PERMS = if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission
 private fun granted(c: Context) = PERMS.all { ContextCompat.checkSelfPermission(c, it) == PackageManager.PERMISSION_GRANTED } ||
     (Build.VERSION.SDK_INT >= 34 && ContextCompat.checkSelfPermission(c, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED)
 
+/** Where you are in the app; survives the window being rebuilt. */
+private object Nav {
+    val viewing = mutableStateOf<Pair<List<Photo>, Int>?>(null)
+    val editing = mutableStateOf<Uri?>(null)
+    val external = mutableStateOf<Uri?>(null)
+}
+
 @Composable
 fun MemoriesApp() {
     val context = LocalContext.current
@@ -90,9 +97,10 @@ fun MemoriesApp() {
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { ok = granted(context) }
     var photos by remember { mutableStateOf<List<Photo>?>(null) }
     var tick by remember { mutableIntStateOf(0) }
-    var viewing by remember { mutableStateOf<Pair<List<Photo>, Int>?>(null) }
-    var editing by remember { mutableStateOf<Uri?>(null) }
-    var external by remember { mutableStateOf<Uri?>(null) }
+    // Kept outside the screen so a wallpaper or theme change (which makes Android rebuild the window) returns you to the same photo.
+    var viewing by Nav.viewing
+    var editing by Nav.editing
+    var external by Nav.external
     val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(owner) {
         val o = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) { ok = granted(context); tick++ } }
@@ -254,8 +262,8 @@ private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val pager = rememberPagerState(start.coerceAtLeast(0)) { list.size }
-    var chrome by remember { mutableStateOf(true) }
-    var info by remember { mutableStateOf(false) }
+    var chrome by rememberSaveable { mutableStateOf(true) }
+    var info by rememberSaveable { mutableStateOf(false) }
     var slideshow by remember { mutableStateOf(start < 0) }
     val current = list.getOrNull(pager.currentPage)
     val toastRef = remember { mutableStateOf<(String) -> Unit>({}) }
@@ -327,9 +335,10 @@ private fun InfoDialog(ph: Photo, onDismiss: () -> Unit) {
                     context.launchSafely(Intent("dev.wonderdesk.wayfinder.SHOW").setPackage("dev.wonderdesk.wayfinder").putExtra("path", ph.path)) {}
                 })
                 if (!ph.video) { PanelDivider(); ListRow("Set as wallpaper", icon = WonderIcons.Wallpaper, tint = Color(0xFF8E44AD), onClick = {
-                    context.launchSafely(WallpaperManager.getInstance(context).getCropAndSetWallpaperIntent(ph.uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
-                        context.launchSafely(Intent(Intent.ACTION_ATTACH_DATA).setDataAndType(ph.uri, "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) {}
-                    }
+                    val attach = Intent(Intent.ACTION_ATTACH_DATA).setDataAndType(ph.uri, "image/*").putExtra("mimeType", "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    val crop = runCatching { WallpaperManager.getInstance(context).getCropAndSetWallpaperIntent(ph.uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }.getOrNull()
+                    if (crop != null) context.launchSafely(crop) { context.launchSafely(Intent.createChooser(attach, "Set as")) {} }
+                    else context.launchSafely(Intent.createChooser(attach, "Set as")) {}
                 }) }
             }
         }
