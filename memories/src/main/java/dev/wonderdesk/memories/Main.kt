@@ -312,13 +312,20 @@ private fun ZoomImage(ph: Photo, onTap: () -> Unit) {
     var bmp by remember(ph.id) { mutableStateOf<Bitmap?>(null) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    val zoomScope = rememberCoroutineScope()
+    var boxSize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
+    // Keeps the picture on screen however far you pan.
+    fun clamp(o: Offset, s: Float) = Offset(o.x.coerceIn(-(s - 1) * boxSize.width / 2, (s - 1) * boxSize.width / 2), o.y.coerceIn(-(s - 1) * boxSize.height / 2, (s - 1) * boxSize.height / 2))
+    fun zoomTo(ts: Float, to: Offset) { val fs = scale; val fo = offset; val tt = clamp(to, ts)
+        zoomScope.launch { androidx.compose.animation.core.animate(0f, 1f, animationSpec = androidx.compose.animation.core.tween(240, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { t, _ -> scale = fs + (ts - fs) * t; offset = fo + (tt - fo) * t } } }
     LaunchedEffect(ph.id) { bmp = withContext(Dispatchers.IO) { Gallery.thumb(context, ph, 512) }; bmp = withContext(Dispatchers.IO) { if (ph.video) Gallery.thumb(context, ph, 1080) else Gallery.load(context, ph.uri) ?: bmp } }
-    Box(Modifier.fillMaxSize()
-        .pointerInput(ph.id) { detectTapGestures(onTap = { onTap() }, onDoubleTap = { o -> if (scale > 1f) { scale = 1f; offset = Offset.Zero } else { scale = 2.5f; offset = (Offset(size.width / 2f, size.height / 2f) - o) * 1.5f } }) }
-        .then(if (scale > 1f) Modifier.pointerInput(ph.id) { detectTransformGestures { _, pan, zoom, _ -> scale = (scale * zoom).coerceIn(1f, 8f); offset = if (scale == 1f) Offset.Zero else offset + pan } }
+    val img = remember(bmp) { bmp?.asImageBitmap() }
+    Box(Modifier.fillMaxSize().onSizeChanged { boxSize = androidx.compose.ui.geometry.Size(it.width.toFloat(), it.height.toFloat()) }
+        .pointerInput(ph.id) { detectTapGestures(onTap = { onTap() }, onDoubleTap = { o -> if (scale > 1f) zoomTo(1f, Offset.Zero) else zoomTo(2.5f, (Offset(size.width / 2f, size.height / 2f) - o) * 1.5f) }) }
+        .then(if (scale > 1f) Modifier.pointerInput(ph.id) { detectTransformGestures { _, pan, zoom, _ -> scale = (scale * zoom).coerceIn(1f, 8f); offset = if (scale == 1f) Offset.Zero else clamp(offset + pan, scale) } }
               else Modifier.pointerInput(ph.id) { detectTransformGestures(panZoomLock = true) { _, _, zoom, _ -> if (zoom != 1f) scale = (scale * zoom).coerceIn(1f, 8f) } }),
         contentAlignment = Alignment.Center) {
-        bmp?.let { Image(it.asImageBitmap(), ph.name, Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y }, contentScale = ContentScale.Fit) }
+        img?.let { Image(it, ph.name, Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y }, contentScale = ContentScale.Fit) }
         if (ph.video) Icon(WonderIcons.PlayArrow, null, Modifier.size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = .4f)).padding(12.dp), tint = Color.White)
     }
 }

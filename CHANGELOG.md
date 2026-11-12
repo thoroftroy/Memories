@@ -1,5 +1,12 @@
 # Memories changelog
 
+## v0.5.2
+
+- Double-tap zoom animates smoothly and panning stops at the photo's edges
+- Smoother everywhere: new screens, tabs and Settings ease in instead of snapping, and buttons, tabs, chips and switches give a light tap you can feel (following your phone's touch-feedback setting)
+- Android's predictive back: the back gesture shows a live preview of where you're going
+- Super look: tap sparkles now match Bliss Player: soft glowing sparks with trails, drifting rainbow colours and a faint aurora, instead of big solid circles
+
 ## v0.5.1
 
 - Thumbnails you've already seen appear instantly when you scroll back, and fast flings no longer pile up work
