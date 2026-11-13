@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="latest" android:enabled="true" android:icon="@drawable/shortcut_latest"
+        android:shortcutShortLabel="@string/shortcut_latest" android:shortcutLongLabel="@string/shortcut_latest">
+        <intent android:action="dev.wonderdesk.memories.LATEST" android:targetPackage="dev.wonderdesk.memories" android:targetClass="dev.wonderdesk.memories.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="favourites" android:enabled="true" android:icon="@drawable/shortcut_favourites"
+        android:shortcutShortLabel="@string/shortcut_favourites" android:shortcutLongLabel="@string/shortcut_favourites">
+        <intent android:action="dev.wonderdesk.memories.FAVOURITES" android:targetPackage="dev.wonderdesk.memories" android:targetClass="dev.wonderdesk.memories.MainActivity" />
+    </shortcut>
+</shortcuts>

@@ -1,5 +1,23 @@
 # Memories changelog
 
+## v0.5.3
+
+- Built-in video player: videos play right in the viewer with the same glass controls as Cinema (gel play button, ±10 s, scrubber, speed, loop, mute, fill screen), and pause when you swipe away
+- The photo viewer follows your look: glass title bar and action dock in Aqua, Bliss, Dark Bliss or Super, with a themed background instead of plain black
+- Filmstrip of thumbnails under the photo to jump around, and the status and navigation bars hide with the controls
+- Swipe a photo up or down to close it; pinch zooms around your fingers, and at the edge of a zoomed photo a swipe goes on to the next one
+- Camera apps can open their newest shot in Memories (the thumbnail in the corner of the viewfinder), and Back goes straight back to the camera; over the lock screen only your latest shots are shown
+- Pixel Camera only opens Google Photos. With Google Photos turned off, Settings › Open from Pixel Camera makes its thumbnail open Memories instead
+- New home-screen shortcuts: hold the Memories icon for Newest photo and Favourites
+- On this day: photos from today's date in earlier years at the top of your timeline
+- Trash: see everything deleted in the last 30 days, restore it or delete it for good
+- Pinch the photo grid to make pictures bigger or smaller, and drag the handle on the right to fly through years of photos by month
+- Pull down to refresh, copy a photo to the clipboard from Details, and edit videos in Cinema
+- Tap the tab you're already on to glide back to the top of its list
+- Switches Android greys out as a “Restricted setting” are now explained: the guide walks you through unlocking them in three clear steps, and keeps showing them until the switch is really on (before, on Android 15 and newer it could hide the only hint)
+- New Photo frame widget: On this day, favourites, recent photos or one album, changing every 30 minutes to once a day; tap to open the photo or show the next one, with an optional caption
+- Nothing required stays hidden: if Android is blocking something the app needs, a slim banner says what and takes you straight to the switch, and Settings › Permissions and access lists everything with its state
+
 ## v0.5.2
 
 - Double-tap zoom animates smoothly and panning stops at the photo's edges

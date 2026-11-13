@@ -107,17 +107,24 @@ object Gallery {
         }
     }
 
+    /** Items in Android's trash (deleted in the last 30 days), newest first; [Photo.taken] holds when each is removed for good. */
     fun trashed(c: Context): List<Photo> {
         val out = mutableListOf<Photo>()
-        val args = android.os.Bundle().apply { putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY) }
+        val args = android.os.Bundle().apply {
+            putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
+            putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, "${MediaStore.Files.FileColumns.MEDIA_TYPE} IN (${MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE}, ${MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO})")
+        }
         runCatching {
-            c.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.DATE_EXPIRES), args, null)?.use { cur ->
-                while (cur.moveToNext()) { val id = cur.getLong(0)
-                    out += Photo(id, ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id), cur.getString(1) ?: "", cur.getLong(2) * 1000, 0, 0, 0, "Trash", "", false, 0, false, "image/*") }
+            c.contentResolver.query(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL), arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.DATE_EXPIRES,
+                MediaStore.Files.FileColumns.MEDIA_TYPE, MediaStore.MediaColumns.DURATION, MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.SIZE), args, null)?.use { cur ->
+                while (cur.moveToNext()) { val id = cur.getLong(0); val video = cur.getInt(3) == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO
+                    val base = if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    out += Photo(id, ContentUris.withAppendedId(base, id), cur.getString(1) ?: "", cur.getLong(2) * 1000, cur.getLong(6), 0, 0, "Trash", "", video, cur.getLong(4), false, cur.getString(5) ?: "") }
             }
         }
-        return out
+        return out.sortedBy { it.taken }
     }
+    fun deleteRequest(c: Context, uris: List<Uri>): PendingIntent = MediaStore.createDeleteRequest(c.contentResolver, uris)
 
     fun saveCopy(c: Context, bmp: Bitmap, name: String, album: String = "Memories"): Uri {
         val values = ContentValues().apply {

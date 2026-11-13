@@ -1,0 +1,6 @@
+<resources>
+    <string name="camera_link_description">Opens your newest photo in Memories when you tap the photo in the corner of Pixel Camera. It only watches Pixel Camera, only for that tap, and only while Google Photos is turned off.</string>
+    <string name="shortcut_latest">Newest photo</string>
+    <string name="shortcut_favourites">Favourites</string>
+    <string name="widget_photowidget_desc">A photo frame: On this day, favourites, recent shots or an album</string>
+</resources>
