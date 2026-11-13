@@ -1,5 +1,10 @@
 # Memories changelog
 
+## v0.5.5
+
+- Drag to select: hold a photo, then slide across others to select them all at once; the grid scrolls when you reach the edge
+- Widgets can now match your look: new Bliss blue and Super neon backgrounds, and “Match my Wonderdesk look” follows whatever Control Room is set to
+
 ## v0.5.4
 
 - Fixed a crash when tapping a thumbnail in the viewer's filmstrip

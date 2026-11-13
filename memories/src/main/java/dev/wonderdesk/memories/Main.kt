@@ -28,6 +28,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -198,6 +200,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
     var pendingMove by remember { mutableStateOf<Pair<List<Uri>, String>?>(null) }
     var showTrash by remember { mutableStateOf(false) }
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    val dragScope = rememberCoroutineScope()
     val albumState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val toastRef = remember { mutableStateOf<(String) -> Unit>({}) }
     val sender = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
@@ -295,7 +298,34 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
                 }
             }) {
                 PullToRefresh(onRefresh = { refresh(); delay(700) }) {
-                    LazyVerticalGrid(GridCells.Fixed(across), Modifier.fillMaxSize(), state = gridState, contentPadding = PaddingValues(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    LazyVerticalGrid(GridCells.Fixed(across), Modifier.fillMaxSize().pointerInput(base) {
+                        // Hold a photo, then slide across others to select a whole range (the grid scrolls at the edges).
+                        fun idAt(o: Offset) = gridState.layoutInfo.visibleItemsInfo.firstOrNull { o.x >= it.offset.x && o.x < it.offset.x + it.size.width && o.y >= it.offset.y && o.y < it.offset.y + it.size.height }?.key as? Long
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            val early = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis + 60) {
+                                while (true) {
+                                    val c = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull() ?: return@withTimeoutOrNull true
+                                    if (!c.pressed || (c.position - down.position).getDistance() > viewConfiguration.touchSlop) return@withTimeoutOrNull true
+                                }
+                                @Suppress("UNREACHABLE_CODE") true
+                            }
+                            if (early != null) return@awaitEachGesture
+                            val anchorId = idAt(down.position) ?: return@awaitEachGesture
+                            val anchor = base.indexOfFirst { it.id == anchorId }.takeIf { it >= 0 } ?: return@awaitEachGesture
+                            val start = selected
+                            selected = start + anchorId
+                            while (true) {
+                                val c = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull() ?: break
+                                if (!c.pressed) break
+                                idAt(c.position)?.let { id -> val i = base.indexOfFirst { it.id == id }
+                                    if (i >= 0) selected = start + base.subList(minOf(anchor, i), maxOf(anchor, i) + 1).map { it.id } }
+                                val edge = 90f
+                                if (c.position.y > size.height - edge) dragScope.launch { gridState.scrollBy(24f) } else if (c.position.y < edge) dragScope.launch { gridState.scrollBy(-24f) }
+                                if (c.positionChanged()) c.consume()
+                            }
+                        }
+                    }, state = gridState, contentPadding = PaddingValues(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         if (memories.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }, key = "memories") {
                             OnThisDayRow(memories) { list -> onOpen(list, 0) }
                         }

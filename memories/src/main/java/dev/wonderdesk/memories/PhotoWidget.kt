@@ -35,7 +35,7 @@ class PhotoWidget : AppWidgetProvider() {
             val s = WidgetPrefs(c, id)
             val look = runCatching { WidgetLook.valueOf(s.str("look", "CLEAR")) }.getOrDefault(WidgetLook.CLEAR)
             val v = RemoteViews(c.packageName, R.layout.widget_photo)
-            v.setInt(R.id.w_root, "setBackgroundResource", when (look) { WidgetLook.GLASS -> R.drawable.wd_widget_bg; WidgetLook.DARK -> R.drawable.wd_widget_bg_dark; WidgetLook.CLEAR -> R.drawable.wd_widget_bg_clear })
+            v.setInt(R.id.w_root, "setBackgroundResource", widgetBackground(look, Triple(R.drawable.wd_widget_bg, R.drawable.wd_widget_bg_dark, R.drawable.wd_widget_bg_clear)))
             val list = runCatching { pool(c, s) }.getOrDefault(emptyList())
             if (list.isEmpty()) {
                 v.setTextViewText(R.id.w_title, "Memories"); v.setTextViewText(R.id.w_text, "Your photos will appear here")
