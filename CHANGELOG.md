@@ -1,5 +1,10 @@
 # Memories changelog
 
+## v0.5.4
+
+- Fixed a crash when tapping a thumbnail in the viewer's filmstrip
+- Fixes from a full round of stress testing on every screen
+
 ## v0.5.3
 
 - Built-in video player: videos play right in the viewer with the same glass controls as Cinema (gel play button, ±10 s, scrubber, speed, loop, mute, fill screen), and pause when you swipe away
