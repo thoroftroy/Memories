@@ -510,6 +510,7 @@ private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (
     val context = LocalContext.current
     val activity = context as Activity
     val c = rememberPlayerChrome()
+    val scope = rememberCoroutineScope()
     val gone = remember { mutableStateListOf<Long>() }
     val favs = remember { mutableStateMapOf<Long, Boolean>() }
     val items = remember(list, gone.size) { list.filter { it.id !in gone } }
@@ -564,7 +565,7 @@ private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (
         AnimatedVisibility(chrome && current != null && !secure, Modifier.align(Alignment.BottomCenter), enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut() + slideOutVertically { it / 2 }) {
             val ph = current ?: return@AnimatedVisibility
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                if (items.size > 1) Filmstrip(items, pager.currentPage) { i -> slideshow = false; kotlinx.coroutines.MainScope().launch { pager.animateScrollToPage(i) } }
+                if (items.size > 1) Filmstrip(items, pager.currentPage) { i -> slideshow = false; scope.launch { pager.animateScrollToPage(i) } }
                 ViewerDock {
                     ViewerAction(WonderIcons.Share, "Share") { context.share(ph.uri, ph.mime.ifBlank { if (ph.video) "video/*" else "image/*" }) {} }
                     ViewerAction(if (isFav(ph)) WonderIcons.Favorite else WonderIcons.FavoriteBorder, "Favourite", active = isFav(ph)) {
