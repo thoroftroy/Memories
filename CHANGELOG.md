@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.5.6
+
+- Widgets: choose the title colour in each widget's settings (automatic, white, dark, Aqua blue, Super pink or gold), on top of the background looks
+
 ## v0.5.5
 
 - Drag to select: hold a photo, then slide across others to select them all at once; the grid scrolls when you reach the edge
