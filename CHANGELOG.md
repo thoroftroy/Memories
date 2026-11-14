@@ -1,5 +1,10 @@
 # Memories changelog
 
+## v0.5.9
+
+- Free up space (in the ⋮ menu): finds exact duplicate photos and videos (keeping the first), videos over 100 MB and screenshots older than a month, with how much each frees. Pick what to clear and it goes to the Trash, so you have 30 days to change your mind
+- Fixed a crash when moving around with arrow keys or Tab (a keyboard or remote) while a screen was closing
+
 ## v0.5.8
 
 - Lighter on the battery: in the Super look the drifting sparkles settle after a few seconds without a touch (the next tap wakes them), so a screen you're reading no longer redraws 25 times a second

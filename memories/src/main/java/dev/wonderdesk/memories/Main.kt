@@ -199,6 +199,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
     var moveTo by remember { mutableStateOf(false) }
     var pendingMove by remember { mutableStateOf<Pair<List<Uri>, String>?>(null) }
     var showTrash by remember { mutableStateOf(false) }
+    var showClean by remember { mutableStateOf(false) }
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val dragScope = rememberCoroutineScope()
     val albumState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
@@ -221,6 +222,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
     val startTab by Nav.startTab
     LaunchedEffect(startTab) { startTab?.let { tab = it; album = null; Nav.startTab.value = null } }
     if (showTrash) { TrashScreen(onClose = { showTrash = false; refresh() }); return }
+    if (showClean) { CleanUpScreen(photos.orEmpty(), onClose = { showClean = false; refresh() }); return }
     if (selected.isNotEmpty() || album != null) BackHandler { if (selected.isNotEmpty()) selected = emptySet() else album = null }
     WonderApp(needs = APP_NEEDS, appName = "Memories", about = ABOUT,
         tabs = if (selected.isNotEmpty()) emptyList() else listOf(WonderTab("photos", "Photos", WonderIcons.PhotoLibrary), WonderTab("albums", "Albums", WonderIcons.Collections),
@@ -244,6 +246,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
         },
         menu = if (selected.isNotEmpty()) listOf(WonderMenuItem("Select all", WonderIcons.SelectAll) { selected = base.map { it.id }.toSet() }) else listOf(
             WonderMenuItem("Slideshow", WonderIcons.Slideshow) { if (base.isNotEmpty()) onOpen(base.filter { !it.video }.ifEmpty { base }, -1) },
+            WonderMenuItem("Free up space", WonderIcons.DeleteSweep) { showClean = true },
             WonderMenuItem("Trash", WonderIcons.Delete) { showTrash = true },
         ), settings = { MemoriesSettings() }) {
         toastRef.value = LocalToast.current
@@ -838,6 +841,56 @@ private fun EditorScreen(uri: Uri, onClose: () -> Unit) {
                     }
                 }
                 Segmented(EditTab.entries.map { it.label }, tab.ordinal) { tab = EditTab.entries[it] }
+            }
+        }
+    }
+}
+
+
+/**
+ * Free up space: big videos, old screenshots and exact duplicates, biggest savings first. Everything chosen goes to the
+ * Trash (30 days to change your mind), never straight to deletion.
+ */
+@Composable
+private fun CleanUpScreen(all: List<Photo>, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val p = wonderPalette()
+    val monthAgo = System.currentTimeMillis() - 30L * 86_400_000L
+    val groups = remember(all) {
+        val big = all.filter { it.video && it.size > 100L * 1024 * 1024 }.sortedByDescending { it.size }
+        val shots = all.filter { (it.album.contains("screenshot", true) || it.relPath.contains("Screenshots", true)) && it.taken < monthAgo }
+        // Exact duplicates: same size and same picture size; keep the oldest, offer the rest.
+        val dups = all.groupBy { Triple(it.size, it.width, it.height) }.values.filter { it.size > 1 && it.first().size > 0 }.flatMap { g -> g.sortedBy { it.taken }.drop(1) }
+        listOf(Triple("Duplicates", "Exact copies; the first one is kept", dups), Triple("Large videos", "Over 100 MB each", big), Triple("Old screenshots", "Taken more than a month ago", shots)).filter { it.third.isNotEmpty() }
+    }
+    var chosen by remember(all) { mutableStateOf(groups.firstOrNull { it.first == "Duplicates" }?.third?.map { it.id }?.toSet() ?: emptySet()) }
+    val sel = all.filter { it.id in chosen }
+    val sender = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { if (it.resultCode == Activity.RESULT_OK) onClose() }
+    WonderApp(appName = "Memories", about = ABOUT, title = "Free up space", subtitle = if (sel.isNotEmpty()) "${sel.size} chosen · ${formatBytes(sel.sumOf { it.size })}" else null, onBack = onClose,
+        actions = { if (sel.isNotEmpty()) TextButton(onClick = { sender.launch(IntentSenderRequest.Builder(Gallery.trashRequest(context, sel.map { it.uri }).intentSender).build()) }) { Text("Move to Trash", color = p.toolbarText) } }) {
+        if (groups.isEmpty()) { EmptyState("Nothing to clear", "No duplicates, huge videos or old screenshots. Nice and tidy.", icon = WonderIcons.CheckCircle); return@WonderApp }
+        LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            groups.forEach { (title, why, list) ->
+                item(span = { GridItemSpan(maxLineSpan) }, key = "h$title") {
+                    Row(Modifier.padding(6.dp, 14.dp, 6.dp, 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("$title · ${formatBytes(list.sumOf { it.size })}", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
+                            Text(why, style = MaterialTheme.typography.labelSmall, color = p.secondaryText)
+                        }
+                        val allOn = list.all { it.id in chosen }
+                        TextButton(onClick = { chosen = if (allOn) chosen - list.map { it.id }.toSet() else chosen + list.map { it.id } }) { Text(if (allOn) "Deselect" else "Select all") }
+                    }
+                }
+                items(list, key = { title + it.id }) { ph ->
+                    val on = ph.id in chosen
+                    Box(Modifier.aspectRatio(1f).clickable { chosen = if (on) chosen - ph.id else chosen + ph.id }) {
+                        Thumb(ph, Modifier.fillMaxSize().graphicsLayer { val sc = if (on) .88f else 1f; scaleX = sc; scaleY = sc }.clip(RoundedCornerShape(if (on) 8.dp else 0.dp)))
+                        Text(formatBytes(ph.size), Modifier.align(Alignment.BottomEnd).padding(4.dp).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = .5f)).padding(horizontal = 4.dp),
+                            color = Color.White, style = MaterialTheme.typography.labelSmall)
+                        if (on) Box(Modifier.align(Alignment.TopStart).padding(6.dp).size(22.dp).clip(CircleShape).background(p.accent).border(2.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(WonderIcons.Check, null, tint = Color.White, modifier = Modifier.size(14.dp)) }
+                    }
+                }
             }
         }
     }
