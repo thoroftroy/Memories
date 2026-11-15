@@ -197,13 +197,29 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
     var searching by remember { mutableStateOf(false) }
     var columns by rememberSaveable { mutableIntStateOf(context.prefs("memories").getInt("cols", 4)) }
     var moveTo by remember { mutableStateOf(false) }
+    val toastRef = remember { mutableStateOf<(String) -> Unit>({}) }
+    var userAlbums by remember { mutableStateOf(UserAlbums.load(context)) }
+    var addToAlbum by remember { mutableStateOf(false) }
+    var newAlbum by remember { mutableStateOf<Set<Long>?>(null) }
+    var renameAlbum by remember { mutableStateOf(false) }
+    var importing by remember { mutableStateOf<String?>(null) }
+    val albumScope = rememberCoroutineScope()
+    val takeout = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) { importing = "Reading the archive…"
+            albumScope.launch {
+                val r = withContext(Dispatchers.IO) { runCatching { UserAlbums.importTakeout(context, uri, photos.orEmpty()) { s -> importing = s } } }
+                importing = null; userAlbums = UserAlbums.load(context)
+                r.onSuccess { (a, ph, miss) -> toastRef.value("Made $a album${if (a == 1) "" else "s"} with $ph photos" + if (miss > 0) " ($miss not found on this phone)" else "") }
+                    .onFailure { toastRef.value("That doesn't look like a Google Photos Takeout .zip") }
+            }
+        }
+    }
     var pendingMove by remember { mutableStateOf<Pair<List<Uri>, String>?>(null) }
     var showTrash by remember { mutableStateOf(false) }
     var showClean by remember { mutableStateOf(false) }
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val dragScope = rememberCoroutineScope()
     val albumState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
-    val toastRef = remember { mutableStateOf<(String) -> Unit>({}) }
     val sender = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
         if (r.resultCode == Activity.RESULT_OK) {
             pendingMove?.let { (uris, a) -> runCatching { Gallery.move(context, uris, a) }.onSuccess { toastRef.value("Moved to $a") }.onFailure { toastRef.value(it.message ?: "Couldn't move") } }
@@ -214,6 +230,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
     val all = photos.orEmpty()
     LibraryPrefs.load(context)
     val base = when {
+        album?.startsWith("ua:") == true -> userAlbums.find { "ua:" + it.id == album }.let { ua -> all.filter { ua != null && it.id in ua.ids } }
         album != null -> all.filter { it.album == album }
         tab == "favorites" -> all.filter { it.favorite }
         tab == "videos" -> all.filter { it.video }
@@ -229,7 +246,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
         tabs = if (selected.isNotEmpty()) emptyList() else listOf(WonderTab("photos", "Photos", WonderIcons.PhotoLibrary), WonderTab("albums", "Albums", WonderIcons.Collections),
             WonderTab("favorites", "Favourites", WonderIcons.Favorite), WonderTab("videos", "Videos", WonderIcons.Movie)),
         selectedTab = tab, onTab = { tab = it; album = null },
-        title = when { selected.isNotEmpty() -> "${selected.size} selected"; album != null -> album!!; tab == "albums" -> "Albums"; tab == "favorites" -> "Favourites"; tab == "videos" -> "Videos"; else -> "Memories" },
+        title = when { selected.isNotEmpty() -> "${selected.size} selected"; album?.startsWith("ua:") == true -> userAlbums.find { "ua:" + it.id == album }?.name ?: "Album"; album != null -> album!!; tab == "albums" -> "Albums"; tab == "favorites" -> "Favourites"; tab == "videos" -> "Videos"; else -> "Memories" },
         onBack = when { selected.isNotEmpty() -> ({ selected = emptySet() }); album != null -> ({ album = null }); else -> null },
         actions = {
             if (selected.isNotEmpty()) {
@@ -238,7 +255,9 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share")) {}
                 })
                 ToolbarButton(WonderIcons.Favorite, "Favourite", { sender.launch(IntentSenderRequest.Builder(Gallery.favoriteRequest(context, sel.map { it.uri }, !sel.all { it.favorite }).intentSender).build()) })
-                ToolbarButton(WonderIcons.DriveFileMove, "Move to album", { moveTo = true })
+                ToolbarButton(WonderIcons.CreateNewFolder, "Add to an album", { addToAlbum = true })
+                if (album?.startsWith("ua:") == true) ToolbarButton(WonderIcons.Close, "Remove from this album", { val id = album!!.removePrefix("ua:"); val rm = sel.map { it.id }.toSet(); UserAlbums.update(context, id) { it.copy(ids = it.ids - rm) }; userAlbums = UserAlbums.load(context); selected = emptySet() })
+                else ToolbarButton(WonderIcons.DriveFileMove, "Move to folder", { moveTo = true })
                 ToolbarButton(WonderIcons.Delete, "Delete", { sender.launch(IntentSenderRequest.Builder(Gallery.trashRequest(context, sel.map { it.uri }).intentSender).build()) })
             } else {
                 ToolbarButton(WonderIcons.Search, "Search", { searching = !searching; if (!searching) q = "" })
@@ -246,6 +265,13 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
             }
         },
         menu = if (selected.isNotEmpty()) listOf(WonderMenuItem("Select all", WonderIcons.SelectAll) { selected = base.map { it.id }.toSet() }) else listOf(
+            *(if (album?.startsWith("ua:") == true) arrayOf(
+                WonderMenuItem("Rename album", WonderIcons.Edit) { renameAlbum = true },
+                WonderMenuItem("Delete album", WonderIcons.Delete) { UserAlbums.update(context, album!!.removePrefix("ua:")) { null }; userAlbums = UserAlbums.load(context); album = null; toastRef.value("Album deleted (the photos stay)") }
+            ) else if (tab == "albums") arrayOf(
+                WonderMenuItem("New album", WonderIcons.CreateNewFolder) { newAlbum = emptySet() },
+                WonderMenuItem("Import albums from Google Photos…", WonderIcons.Download) { takeout.launch(arrayOf("application/zip", "application/x-zip-compressed", "*/*")) }
+            ) else emptyArray()),
             WonderMenuItem("Slideshow", WonderIcons.Slideshow) { if (base.isNotEmpty()) onOpen(base.filter { !it.video }.ifEmpty { base }, -1) },
             WonderMenuItem(if (LibraryPrefs.onThisDay) "Hide On this day" else "Show On this day", WonderIcons.History) { LibraryPrefs.onThisDay = !LibraryPrefs.onThisDay; context.prefs("memories").edit().putBoolean("onThisDay", LibraryPrefs.onThisDay).apply() },
             WonderMenuItem("Free up space", WonderIcons.DeleteSweep) { showClean = true },
@@ -265,6 +291,19 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
                             Chip("Favourites · ${all.count { it.favorite }}", false, { tab = "favorites" }, icon = WonderIcons.Favorite)
                             Chip("Trash", false, { showTrash = true }, icon = WonderIcons.Delete)
                         }
+                    }
+                    if (userAlbums.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "myhead") { Text("My albums", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)) }
+                        items(userAlbums, key = { "u" + it.id }) { ua ->
+                            val inAlbum = all.filter { it.id in ua.ids }
+                            Column(Modifier.clickable { album = "ua:" + ua.id }) {
+                                if (inAlbum.isNotEmpty()) Thumb(inAlbum.first(), Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)), 384)
+                                else Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)).background(p.panel), contentAlignment = Alignment.Center) { Icon(WonderIcons.Collections, null, tint = p.secondaryText) }
+                                Text(ua.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                                Text("${inAlbum.size}", style = MaterialTheme.typography.labelSmall, color = p.secondaryText)
+                            }
+                        }
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "devhead") { Text("On this phone", Modifier.padding(top = 6.dp), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)) }
                     }
                     items(albums, key = { it.first }) { (name, list) ->
                         Column(Modifier.clickable { album = name }) {
@@ -365,6 +404,20 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
             }
         }
     }
+    if (addToAlbum) WonderDialog(onDismissRequest = { addToAlbum = false }, title = { Text("Add ${sel.size} to an album") }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            Panel {
+                ListRow("New album…", icon = WonderIcons.Add, tint = p.accent, onClick = { addToAlbum = false; newAlbum = sel.map { it.id }.toSet() })
+                userAlbums.forEach { ua -> PanelDivider(); ListRow(ua.name, subtitle = "${ua.ids.size} photos", icon = WonderIcons.Collections, tint = Color(0xFF8E44AD), onClick = {
+                    val add = sel.map { it.id }.toSet(); UserAlbums.update(context, ua.id) { it.copy(ids = it.ids + add) }; userAlbums = UserAlbums.load(context); addToAlbum = false; selected = emptySet(); toastRef.value("Added to “${ua.name}”") }) }
+            }
+        }
+    }, confirmButton = { TextButton(onClick = { addToAlbum = false }) { Text("Cancel") } })
+    newAlbum?.let { ids -> InputDialog("New album", "Album name", confirm = "Create", onDismiss = { newAlbum = null }) { n ->
+        UserAlbums.create(context, n, ids); userAlbums = UserAlbums.load(context); newAlbum = null; selected = emptySet(); toastRef.value("Album “${n.trim().ifBlank { "Album" }}” made") } }
+    if (renameAlbum) InputDialog("Rename album", "Album name", confirm = "Rename", initial = userAlbums.find { "ua:" + it.id == album }?.name.orEmpty(), onDismiss = { renameAlbum = false }) { n ->
+        UserAlbums.update(context, album!!.removePrefix("ua:")) { it.copy(name = n.trim().ifBlank { it.name }) }; userAlbums = UserAlbums.load(context); renameAlbum = false }
+    importing?.let { msg -> WonderDialog(onDismissRequest = {}, title = { Text("Importing albums") }, text = { Column { Text(msg); Spacer(Modifier.height(10.dp)); AquaProgress(null, Modifier.fillMaxWidth()) } }, confirmButton = {}) }
     if (moveTo) {
         val albums = all.map { it.album }.distinct().sorted()
         var newName by remember { mutableStateOf("") }
