@@ -1,5 +1,10 @@
 # Memories changelog
 
+## v0.5.11
+
+- My albums: make your own albums from any photos (select photos › Add to an album); one photo can be in as many albums as you like. Rename or delete an album from its ⋮ menu; the photos themselves are never touched
+- Import albums from Google Photos: in the Albums tab ⋮ menu, pick the Takeout .zip you downloaded from Google and Memories makes an album for each of yours, matching photos already on this phone by file name
+
 ## v0.5.10
 
 - On this day can be switched off: Settings › Photos, or Hide On this day in the ⋮ menu
