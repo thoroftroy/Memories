@@ -1,5 +1,10 @@
 # Memories changelog
 
+## v0.5.10
+
+- On this day can be switched off: Settings › Photos, or Hide On this day in the ⋮ menu
+- Arrange photos by Newest first, Oldest first, Name A to Z, Name Z to A or Largest first; the name and size sorts show one plain list with no dates (Settings › Photos)
+
 ## v0.5.9
 
 - Free up space (in the ⋮ menu): finds exact duplicate photos and videos (keeping the first), videos over 100 MB and screenshots older than a month, with how much each frees. Pick what to clear and it goes to the Trash, so you have 30 days to change your mind

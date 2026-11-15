@@ -212,12 +212,13 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
         pendingMove = null
     }
     val all = photos.orEmpty()
+    LibraryPrefs.load(context)
     val base = when {
         album != null -> all.filter { it.album == album }
         tab == "favorites" -> all.filter { it.favorite }
         tab == "videos" -> all.filter { it.video }
         else -> all
-    }.filter { q.isBlank() || it.name.contains(q, true) || it.album.contains(q, true) || it.day.toString().contains(q) }
+    }.filter { q.isBlank() || it.name.contains(q, true) || it.album.contains(q, true) || it.day.toString().contains(q) }.let { LibraryPrefs.sorted(it) }
     val sel = base.filter { it.id in selected }
     val startTab by Nav.startTab
     LaunchedEffect(startTab) { startTab?.let { tab = it; album = null; Nav.startTab.value = null } }
@@ -246,6 +247,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
         },
         menu = if (selected.isNotEmpty()) listOf(WonderMenuItem("Select all", WonderIcons.SelectAll) { selected = base.map { it.id }.toSet() }) else listOf(
             WonderMenuItem("Slideshow", WonderIcons.Slideshow) { if (base.isNotEmpty()) onOpen(base.filter { !it.video }.ifEmpty { base }, -1) },
+            WonderMenuItem(if (LibraryPrefs.onThisDay) "Hide On this day" else "Show On this day", WonderIcons.History) { LibraryPrefs.onThisDay = !LibraryPrefs.onThisDay; context.prefs("memories").edit().putBoolean("onThisDay", LibraryPrefs.onThisDay).apply() },
             WonderMenuItem("Free up space", WonderIcons.DeleteSweep) { showClean = true },
             WonderMenuItem("Trash", WonderIcons.Delete) { showTrash = true },
         ), settings = { MemoriesSettings() }) {
@@ -275,12 +277,13 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
                 return@Column
             }
             if (base.isEmpty()) { EmptyState(if (q.isNotBlank()) "No matches" else if (tab == "favorites") "No favourites yet" else "Nothing here", if (tab == "favorites") "Tap the heart on any photo to keep it here." else "Photos you take or save appear here.", icon = WonderIcons.PhotoLibrary); return@Column }
-            val groups = remember(base) { base.groupBy { it.day } }
+            val plain = LibraryPrefs.plain
+            val groups = remember(base, plain) { if (plain) mapOf(LocalDate.EPOCH to base) else base.groupBy { it.day } }
             // The size you pick is for portrait; landscape and tablets fit more of the same size across.
             val conf = androidx.compose.ui.platform.LocalConfiguration.current
             val across = (columns * conf.screenWidthDp / minOf(conf.screenWidthDp, conf.screenHeightDp).coerceAtLeast(1)).coerceIn(columns, 14)
-            val showMemories = tab == "photos" && album == null && q.isBlank() && selected.isEmpty()
-            val memories = remember(all, showMemories) { if (showMemories) onThisDay(all) else emptyList() }
+            val showMemories = LibraryPrefs.onThisDay && tab == "photos" && album == null && q.isBlank() && selected.isEmpty()
+            val memories = remember(all, showMemories, LibraryPrefs.onThisDay) { if (showMemories) onThisDay(all) else emptyList() }
             // Where each day starts in the grid, for the date shown while dragging the scroller.
             val starts = remember(groups, memories.isNotEmpty()) { var i = if (memories.isNotEmpty()) 1 else 0; groups.map { (d, l) -> (i to d).also { i += 1 + l.size } } }
             ScrollToTopOnReselect(gridState)
@@ -333,7 +336,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
                             OnThisDayRow(memories) { list -> onOpen(list, 0) }
                         }
                         groups.forEach { (day, list) ->
-                            item(span = { GridItemSpan(maxLineSpan) }, key = "d$day") {
+                            if (!plain) item(span = { GridItemSpan(maxLineSpan) }, key = "d$day") {
                                 Row(Modifier.padding(start = 12.dp, end = 8.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(dayLabel(day), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
                                     if (selected.isNotEmpty()) TextButton(onClick = { selected = if (list.all { it.id in selected }) selected - list.map { it.id }.toSet() else selected + list.map { it.id } }) {
@@ -358,7 +361,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
                         }
                     }
                 }
-                DateScroller(gridState, starts, Modifier.align(Alignment.CenterEnd))
+                if (!plain) DateScroller(gridState, starts, Modifier.align(Alignment.CenterEnd))
             }
         }
     }
@@ -487,9 +490,37 @@ private fun TrashScreen(onClose: () -> Unit) {
     }
 }
 
+/** How the library is arranged: shared by the grid and Settings. */
+object LibraryPrefs {
+    val SORTS = listOf("date" to "Newest first", "date_old" to "Oldest first", "name" to "Name A to Z", "name_desc" to "Name Z to A", "size" to "Largest first")
+    var onThisDay by mutableStateOf(true)
+    var sort by mutableStateOf("date")
+    private var loaded = false
+    fun load(c: android.content.Context) { if (loaded) return; loaded = true; val p = c.prefs("memories"); onThisDay = p.getBoolean("onThisDay", true); sort = p.getString("sort", "date") ?: "date" }
+    val plain get() = sort == "name" || sort == "name_desc" || sort == "size"
+    fun sorted(l: List<Photo>) = when (sort) {
+        "date_old" -> l.sortedBy { it.taken }; "name" -> l.sortedBy { it.name.lowercase() }; "name_desc" -> l.sortedByDescending { it.name.lowercase() }
+        "size" -> l.sortedByDescending { it.size }; else -> l }
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    @Composable
+    fun ColumnScope.Section() {
+        val context = LocalContext.current
+        load(context)
+        Panel(title = "Photos", footer = "Name and size sorts show one plain list with no date headings.") {
+            SwitchRow("On this day", onThisDay, { onThisDay = it; context.prefs("memories").edit().putBoolean("onThisDay", it).apply() }, subtitle = "Show pictures from this date in earlier years at the top of Photos", icon = WonderIcons.History, tint = Color(0xFF1E7FE8))
+            PanelDivider()
+            Text("Arrange photos by", Modifier.padding(start = 16.dp, top = 10.dp), style = MaterialTheme.typography.labelLarge)
+            androidx.compose.foundation.layout.FlowRow(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SORTS.forEach { (id, name) -> Chip(name, sort == id, { sort = id; context.prefs("memories").edit().putString("sort", id).apply() }) }
+            }
+        }
+    }
+}
+
 /** Memories' own section in Settings: opening photos from other apps and the camera. */
 @Composable
 private fun ColumnScope.MemoriesSettings() {
+    with(LibraryPrefs) { Section() }
     val context = LocalContext.current
     val p = wonderPalette()
     var guide by remember { mutableStateOf(false) }
