@@ -131,6 +131,7 @@ fun MemoriesApp() {
     // Kept outside the screen so a wallpaper or theme change (which makes Android rebuild the window) returns you to the same photo.
     var viewing by Nav.viewing
     var editing by Nav.editing
+    var studio by remember { mutableStateOf<Uri?>(null) }
     var external by Nav.external
     val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(owner) {
@@ -170,7 +171,8 @@ fun MemoriesApp() {
         if (idx >= 0) { viewing = (if (Nav.secure) list.filter { it.id == id || it.taken >= System.currentTimeMillis() - 10 * 60_000 } else list).let { l -> l to l.indexOfFirst { it.id == id } }; external = null }
     }
     fun closeExternal() { val back = Nav.fromApp; Nav.fromApp = false; Nav.secure = false; if (back) (context as Activity).finish() }
-    editing?.let { u -> EditorScreen(u, onClose = { editing = null; tick++; if (viewing == null && external == null) closeExternal() }); return }
+    studio?.let { u -> StudioScreen(u, onClose = { studio = null; tick++; if (viewing == null && external == null) closeExternal() }); return }
+    editing?.let { u -> EditorScreen(u, onClose = { editing = null; tick++; if (viewing == null && external == null) closeExternal() }, onStudio = { studio = u; editing = null }); return }
     external?.let { u -> SingleViewer(u, Nav.externalMime, onClose = { external = null; closeExternal() }, onEdit = { editing = u }); return }
     viewing?.let { (list, i) -> Viewer(list, i, onClose = { viewing = null; tick++; closeExternal() }, onEdit = { editing = it }, secure = Nav.secure); return }
     if (!ok) {
@@ -278,7 +280,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
             WonderMenuItem("Trash", WonderIcons.Delete) { showTrash = true },
         ), settings = { MemoriesSettings() }) {
         toastRef.value = LocalToast.current
-        if (photos == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = p.accent) }; return@WonderApp }
+        if (photos == null) { LoadingPane("Reading your photos and videos", detail = "Looking through every folder on this phone"); return@WonderApp }
         Column(Modifier.fillMaxSize()) {
             if (searching) SearchField(q, { q = it }, "Search names, albums or dates (2024-07)", Modifier.padding(16.dp, 10.dp, 16.dp, 6.dp))
             if (tab == "albums" && album == null) {
@@ -520,7 +522,7 @@ private fun TrashScreen(onClose: () -> Unit) {
             }
         }) {
         when {
-            items == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = p.accent) }
+            items == null -> LoadingPane("Reading this list", detail = "Finding the pictures and videos")
             list.isEmpty() -> EmptyState("Trash is empty", "Photos and videos you delete stay here for 30 days, so you can bring them back.", icon = WonderIcons.Delete)
             else -> LazyVerticalGrid(GridCells.Adaptive(110.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -790,7 +792,7 @@ private fun SingleViewer(uri: Uri, mime: String?, onClose: () -> Unit, onEdit: (
 private enum class EditTab(val label: String) { Crop("Crop"), Adjust("Adjust"), Filters("Filters"), Markup("Markup") }
 
 @Composable
-private fun EditorScreen(uri: Uri, onClose: () -> Unit) {
+private fun EditorScreen(uri: Uri, onClose: () -> Unit, onStudio: () -> Unit = {}) {
     val context = LocalContext.current
     val p = wonderPalette()
     val scope = rememberCoroutineScope()
@@ -810,7 +812,30 @@ private fun EditorScreen(uri: Uri, onClose: () -> Unit) {
     LaunchedEffect(uri) { src = withContext(Dispatchers.IO) { Gallery.load(context, uri, 2048) } }
     // Preview: rotated/flipped source; crop overlay shows the kept area; markup draws inside the crop.
     val preview = remember(src, rotate, flip) { src?.let { s -> Bitmap.createBitmap(s, 0, 0, s.width, s.height, android.graphics.Matrix().apply { postRotate(rotate.toFloat()); if (flip) postScale(-1f, 1f) }, true) } }
+    var replaceAsk by remember { mutableStateOf(false) }
+    val writeGrant = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        val s = src
+        if (r.resultCode == Activity.RESULT_OK && s != null) {
+            saving = true
+            scope.launch {
+                val res = withContext(Dispatchers.Default) { runCatching {
+                    val out = Edits.render(s, rotate, flip, crop, adjust, filter, strokes.toList())
+                    context.contentResolver.openOutputStream(uri, "wt")!!.use { o -> out.compress(Bitmap.CompressFormat.JPEG, 95, o) }
+                } }
+                saving = false
+                res.onSuccess { toastRef.value("Replaced the original"); onClose() }.onFailure { toastRef.value("Couldn't replace it: ${it.message}") }
+            }
+        }
+    }
+    if (replaceAsk) AlertDialog(onDismissRequest = { replaceAsk = false }, title = { Text("Replace the original?") },
+        text = { Text("The original picture is overwritten with this edit. Android asks once more before it does. A copy is safer.") },
+        confirmButton = { TextButton(onClick = {
+            replaceAsk = false
+            runCatching { writeGrant.launch(IntentSenderRequest.Builder(Gallery.writeRequest(context, listOf(uri)).intentSender).build()) }.onFailure { toastRef.value("This picture can't be replaced, save a copy instead") }
+        }) { Text("Replace") } }, dismissButton = { TextButton(onClick = { replaceAsk = false }) { Text("Keep original") } })
     WonderApp(appName = "Memories", about = ABOUT, title = "Edit", onBack = onClose, actions = {
+        ToolbarButton(WonderIcons.Layers, "Layers, cut-outs and transparency", { onStudio() })
+        TextButton(enabled = src != null && !saving, onClick = { replaceAsk = true }) { Text("Replace", color = p.toolbarText, style = MaterialTheme.typography.titleMedium) }
         TextButton(enabled = src != null && !saving, onClick = {
             val s = src ?: return@TextButton
             saving = true
@@ -828,7 +853,7 @@ private fun EditorScreen(uri: Uri, onClose: () -> Unit) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxWidth().viewerBackdrop(rememberPlayerChrome()).padding(16.dp), contentAlignment = Alignment.Center) {
                 val bmp = preview
-                if (bmp == null) CircularProgressIndicator(color = p.accent) else {
+                if (bmp == null) LoadingStatus("Opening your picture", detail = "Preparing it for editing") else {
                     val ratio = bmp.width.toFloat() / bmp.height
                     var box by remember { mutableStateOf(IntSize(1, 1)) }
                     var live by remember { mutableStateOf<List<Pair<Float, Float>>>(emptyList()) }

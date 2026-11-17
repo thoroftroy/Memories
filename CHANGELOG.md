@@ -1,5 +1,11 @@
 # Memories changelog
 
+## v0.5.12
+
+- New Layers editor: magic wand, box select, brush, eraser that leaves see-through areas, cut a part out onto its own layer, move, resize and turn layers, add photos and text, save as PNG with transparency
+- Replace the original from either editor, with a question first (saving a copy is still the default)
+- Loading screens now say what they are doing
+
 ## v0.5.11
 
 - My albums: make your own albums from any photos (select photos › Add to an album); one photo can be in as many albums as you like. Rename or delete an album from its ⋮ menu; the photos themselves are never touched

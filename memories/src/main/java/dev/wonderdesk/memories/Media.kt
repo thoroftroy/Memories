@@ -126,6 +126,25 @@ object Gallery {
     }
     fun deleteRequest(c: Context, uris: List<Uri>): PendingIntent = MediaStore.createDeleteRequest(c.contentResolver, uris)
 
+    /** Saves a PNG (keeps see-through areas) or a JPEG into Pictures/<album>. */
+    fun saveImage(c: Context, bmp: Bitmap, name: String, png: Boolean, album: String = "Memories"): Uri {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name); put(MediaStore.MediaColumns.MIME_TYPE, if (png) "image/png" else "image/jpeg")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$album"); put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = c.contentResolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values) ?: error("Couldn't save the picture")
+        c.contentResolver.openOutputStream(uri)!!.use { o ->
+            if (png) bmp.compress(Bitmap.CompressFormat.PNG, 100, o)
+            else {
+                val flat = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
+                android.graphics.Canvas(flat).apply { drawColor(android.graphics.Color.WHITE); drawBitmap(bmp, 0f, 0f, null) }
+                flat.compress(Bitmap.CompressFormat.JPEG, 95, o)
+            }
+        }
+        c.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        return uri
+    }
+
     fun saveCopy(c: Context, bmp: Bitmap, name: String, album: String = "Memories"): Uri {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name); put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
