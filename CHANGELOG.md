@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.5.16
+
+- New setting: how long a slideshow shows each photo
+
 ## v0.5.15
 
 - Studio, the layered editor with magic wand, lasso, cut-outs, transparency, text, shapes and blend modes, now has its own button in the photo viewer instead of hiding inside Edit

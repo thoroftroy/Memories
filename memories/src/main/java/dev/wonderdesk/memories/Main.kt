@@ -569,6 +569,10 @@ object LibraryPrefs {
             Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { (2..7).forEach { n -> Chip("$n", cols == n, { cols = n; context.prefs("memories").edit().putInt("cols", n).apply() }) } }
             Text("You can also pinch the grid to change this.", Modifier.padding(start = 16.dp, bottom = 8.dp), style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText)
             PanelDivider()
+            var slide by remember { mutableIntStateOf(context.prefs("memories").getInt("slideMs", 3500)) }
+            Text("Slideshow shows each photo for", Modifier.padding(start = 16.dp, top = 10.dp), style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(2000 to "2 s", 3500 to "3.5 s", 5000 to "5 s", 8000 to "8 s").forEach { (v, n) -> Chip(n, slide == v, { slide = v; context.prefs("memories").edit().putInt("slideMs", v).apply() }) } }
+            PanelDivider()
             var awake by remember { mutableStateOf(context.prefs("memories").getBoolean("keepAwake", false)) }
             SwitchRow("Keep the screen on while viewing", awake, { awake = it; context.prefs("memories").edit().putBoolean("keepAwake", it).apply() }, icon = WonderIcons.Visibility, tint = Color(0xFF8E44AD))
             PanelDivider()
@@ -658,7 +662,7 @@ private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (
         }
     }
     fun isFav(ph: Photo) = favs[ph.id] ?: ph.favorite
-    LaunchedEffect(slideshow) { while (slideshow) { delay(3500); if (pager.currentPage < items.lastIndex) pager.animateScrollToPage(pager.currentPage + 1) else slideshow = false } }
+    LaunchedEffect(slideshow) { while (slideshow) { delay(context.prefs("memories").getInt("slideMs", 3500).toLong()); if (pager.currentPage < items.lastIndex) pager.animateScrollToPage(pager.currentPage + 1) else slideshow = false } }
     // Hide the status and navigation bars along with the controls, like a proper photo viewer.
     val view = androidx.compose.ui.platform.LocalView.current
     DisposableEffect(Unit) { view.keepScreenOn = activity.getSharedPreferences("memories", android.content.Context.MODE_PRIVATE).getBoolean("keepAwake", false); onDispose { view.keepScreenOn = false } }
