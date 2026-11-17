@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -54,14 +55,20 @@ import kotlin.math.min
 /** One layer of the picture: its pixels plus where it sits on the canvas. */
 class Layer(
     val id: Int, var name: String, var bmp: Bitmap,
-    var cx: Float, var cy: Float, var scale: Float = 1f, var rot: Float = 0f, var alpha: Float = 1f, var visible: Boolean = true,
+    var cx: Float, var cy: Float, var scale: Float = 1f, var rot: Float = 0f, var alpha: Float = 1f, var visible: Boolean = true, var blend: Int = 0,
 ) {
     /** Layer pixels to canvas pixels. */
     fun matrix(): Matrix = Matrix().apply {
         postTranslate(-bmp.width / 2f, -bmp.height / 2f); postScale(scale, scale); postRotate(rot); postTranslate(cx, cy)
     }
-    fun copyShallow() = Layer(id, name, bmp, cx, cy, scale, rot, alpha, visible)
+    fun copyShallow() = Layer(id, name, bmp, cx, cy, scale, rot, alpha, visible, blend)
 }
+
+/** Ways a layer can mix with what is under it. */
+private val BLENDS = listOf("Normal" to android.graphics.BlendMode.SRC_OVER, "Multiply" to android.graphics.BlendMode.MULTIPLY, "Screen" to android.graphics.BlendMode.SCREEN,
+    "Overlay" to android.graphics.BlendMode.OVERLAY, "Darken" to android.graphics.BlendMode.DARKEN, "Lighten" to android.graphics.BlendMode.LIGHTEN,
+    "Colour dodge" to android.graphics.BlendMode.COLOR_DODGE, "Colour burn" to android.graphics.BlendMode.COLOR_BURN, "Soft light" to android.graphics.BlendMode.SOFT_LIGHT,
+    "Hard light" to android.graphics.BlendMode.HARD_LIGHT, "Difference" to android.graphics.BlendMode.DIFFERENCE, "Hue" to android.graphics.BlendMode.HUE, "Colour" to android.graphics.BlendMode.COLOR)
 
 private class Snap(val layers: List<Layer>, val selected: Int, val pixelLayer: Int, val pixels: Bitmap?)
 
@@ -88,7 +95,7 @@ private class Doc(val w: Int, val h: Int) {
     /** Remember the state before a change. Pass the layer whose pixels are about to change. */
     fun snapshot(pixelsOf: Layer? = null) {
         undo.addLast(Snap(layers.map { it.copyShallow() }, selected, pixelsOf?.id ?: -1, pixelsOf?.bmp?.copy(Bitmap.Config.ARGB_8888, false)))
-        while (undo.size > 8) undo.removeFirst().pixels?.recycle()
+        while (undo.size > 24) undo.removeFirst().pixels?.recycle()
     }
 
     fun undo(): Boolean {
@@ -119,7 +126,7 @@ private class Doc(val w: Int, val h: Int) {
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = AndroidCanvas(out)
         val p = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-        layers.forEach { l -> if (l.visible) { p.alpha = (l.alpha * 255).toInt(); c.drawBitmap(l.bmp, l.matrix(), p) } }
+        layers.forEach { l -> if (l.visible) { p.alpha = (l.alpha * 255).toInt(); p.blendMode = BLENDS[l.blend].second; c.drawBitmap(l.bmp, l.matrix(), p) } }
         return out
     }
 }
@@ -156,6 +163,56 @@ private fun floodMask(bmp: Bitmap, sx: Int, sy: Int, tolerance: Int): ByteArray 
     return mask
 }
 
+/** Grows (+) or shrinks (-) a selection by [r] pixels. */
+private fun resizeMask(m: ByteArray, w: Int, h: Int, r: Int): ByteArray {
+    var cur = m
+    repeat(kotlin.math.abs(r)) {
+        val grow = r > 0; val nx = cur.copyOf()
+        for (y in 0 until h) for (x in 0 until w) {
+            val i = y * w + x
+            val any = (x > 0 && (cur[i - 1].toInt() != 0) == grow) || (x < w - 1 && (cur[i + 1].toInt() != 0) == grow) || (y > 0 && (cur[i - w].toInt() != 0) == grow) || (y < h - 1 && (cur[i + w].toInt() != 0) == grow)
+            if (any) nx[i] = if (grow) 1 else 0
+        }
+        cur = nx
+    }
+    return cur
+}
+
+/** A box blur, run a few times to look smooth. */
+private fun blurBitmap(src: Bitmap, radius: Int): Bitmap {
+    val w = src.width; val h = src.height; var a = IntArray(w * h); src.getPixels(a, 0, w, 0, 0, w, h)
+    var b = IntArray(w * h)
+    repeat(3) {
+        for (y in 0 until h) { var sa = 0; var sr = 0; var sg = 0; var sb = 0; var n = 0
+            for (x in -radius..radius) if (x in 0 until w) { val c = a[y * w + x]; sa += c ushr 24; sr += (c shr 16) and 255; sg += (c shr 8) and 255; sb += c and 255; n++ }
+            for (x in 0 until w) {
+                b[y * w + x] = ((sa / n) shl 24) or ((sr / n) shl 16) or ((sg / n) shl 8) or (sb / n)
+                val out = x - radius; val inn = x + radius + 1
+                if (out >= 0) { val c = a[y * w + out]; sa -= c ushr 24; sr -= (c shr 16) and 255; sg -= (c shr 8) and 255; sb -= c and 255; n-- }
+                if (inn < w) { val c = a[y * w + inn]; sa += c ushr 24; sr += (c shr 16) and 255; sg += (c shr 8) and 255; sb += c and 255; n++ }
+            } }
+        for (x in 0 until w) { var sa = 0; var sr = 0; var sg = 0; var sb = 0; var n = 0
+            for (y in -radius..radius) if (y in 0 until h) { val c = b[y * w + x]; sa += c ushr 24; sr += (c shr 16) and 255; sg += (c shr 8) and 255; sb += c and 255; n++ }
+            for (y in 0 until h) {
+                a[y * w + x] = ((sa / n) shl 24) or ((sr / n) shl 16) or ((sg / n) shl 8) or (sb / n)
+                val out = y - radius; val inn = y + radius + 1
+                if (out >= 0) { val c = b[out * w + x]; sa -= c ushr 24; sr -= (c shr 16) and 255; sg -= (c shr 8) and 255; sb -= c and 255; n-- }
+                if (inn < h) { val c = b[inn * w + x]; sa += c ushr 24; sr += (c shr 16) and 255; sg += (c shr 8) and 255; sb += c and 255; n++ }
+            } }
+    }
+    return Bitmap.createBitmap(a, w, h, Bitmap.Config.ARGB_8888)
+}
+
+/** Brightness (-1..1), contrast (-1..1), saturation (-1..1) and warmth (-1..1) as one colour matrix. */
+private fun adjustMatrix(bright: Float, contrast: Float, sat: Float, warm: Float): android.graphics.ColorMatrix {
+    val m = android.graphics.ColorMatrix()
+    m.setSaturation(1f + sat)
+    val c = 1f + contrast; val t = (1f - c) * 128f + bright * 255f
+    m.postConcat(android.graphics.ColorMatrix(floatArrayOf(c, 0f, 0f, 0f, t, 0f, c, 0f, 0f, t, 0f, 0f, c, 0f, t, 0f, 0f, 0f, 1f, 0f)))
+    m.postConcat(android.graphics.ColorMatrix(floatArrayOf(1f + .2f * warm, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 1f - .2f * warm, 0f, 0f, 0f, 0f, 0f, 1f, 0f)))
+    return m
+}
+
 private fun textLayerBitmap(text: String, color: Int, sizePx: Float): Bitmap {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; textSize = sizePx; typeface = android.graphics.Typeface.DEFAULT_BOLD }
     val lines = text.split('\n')
@@ -168,7 +225,7 @@ private fun textLayerBitmap(text: String, color: Int, sizePx: Float): Bitmap {
     return bmp
 }
 
-private enum class Tool(val label: String) { Move("Move"), Brush("Brush"), Eraser("Eraser"), Wand("Magic wand"), Box("Box select") }
+private enum class Tool(val label: String) { Move("Move"), Brush("Brush"), Eraser("Eraser"), Wand("Magic wand"), Box("Box select"), Lasso("Lasso"), Bucket("Paint bucket"), Pick("Colour picker"), Shape("Shapes"), Adjust("Adjust") }
 
 /** The layered editor: layers, brush, eraser, magic wand, box select, text, added photos, transparency and PNG export. */
 @Composable
@@ -188,6 +245,13 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
     var brush by remember { mutableFloatStateOf(36f) }
     var tol by remember { mutableFloatStateOf(28f) }
     var color by remember { mutableIntStateOf(0xFFE5483C.toInt()) }
+    var brushAlpha by remember { mutableFloatStateOf(1f) }
+    var shape by remember { mutableStateOf("Rectangle") }
+    var filled by remember { mutableStateOf(true) }
+    var aBright by remember { mutableFloatStateOf(0f) }; var aContrast by remember { mutableFloatStateOf(0f) }; var aSat by remember { mutableFloatStateOf(0f) }; var aWarm by remember { mutableFloatStateOf(0f) }
+    var aBlur by remember { mutableFloatStateOf(4f) }
+    var lassoPath by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    var working by remember { mutableStateOf<String?>(null) }
     var png by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var textAsk by remember { mutableStateOf(false) }
@@ -230,7 +294,7 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
         }) { Text("Replace") } }, dismissButton = { TextButton(onClick = { replaceAsk = false }) { Text("Keep original") } })
 
     WonderApp(appName = "Memories", about = "Layers, cut-outs and transparency.", title = "Layers", onBack = onClose, actions = {
-        ToolbarButton(WonderIcons.Undo, "Undo", { d?.undo() }, enabled = d?.undo?.isNotEmpty() == true)
+        ToolbarButton(WonderIcons.Undo, "Undo", { d?.undo() }, enabled = d != null && d.version >= 0 && d.undo.isNotEmpty())
         TextButton(enabled = d != null && !saving, onClick = {
             val dd = d ?: return@TextButton
             saving = true
@@ -282,7 +346,7 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                                 d.snapshot(l)
                                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                     style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; strokeWidth = brush / l.scale
-                                    if (tool == Tool.Eraser) xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) else this.color = color
+                                    if (tool == Tool.Eraser) xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) else { this.color = color; this.alpha = (brushAlpha * 255).toInt() }
                                 }
                                 val cv = AndroidCanvas(l.bmp)
                                 fun local(o: Offset): FloatArray { val pt = floatArrayOf(o.x / vs(), o.y / vs()); inv.mapPoints(pt); return pt }
@@ -326,6 +390,62 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                                     ev.changes.forEach { it.consume() }
                                 } while (ev.changes.any { it.pressed })
                             }
+                            Tool.Lasso -> awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val l = d.sel() ?: return@awaitEachGesture
+                                val inv = Matrix(); if (!l.matrix().invert(inv)) return@awaitEachGesture
+                                val pts = mutableListOf(down.position)
+                                do {
+                                    val ev = awaitPointerEvent(); ev.changes.forEach { pts.add(it.position); it.consume() }
+                                    lassoPath = pts.toList()
+                                } while (ev.changes.any { it.pressed })
+                                lassoPath = emptyList()
+                                if (pts.size < 3) return@awaitEachGesture
+                                val w = l.bmp.width; val h = l.bmp.height
+                                val path = android.graphics.Path(); val first = floatArrayOf(pts[0].x / vs(), pts[0].y / vs()); inv.mapPoints(first); path.moveTo(first[0], first[1])
+                                pts.drop(1).forEach { o -> val q = floatArrayOf(o.x / vs(), o.y / vs()); inv.mapPoints(q); path.lineTo(q[0], q[1]) }
+                                path.close()
+                                val mb = Bitmap.createBitmap(w, h, Bitmap.Config.ALPHA_8)
+                                AndroidCanvas(mb).drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; this.color = android.graphics.Color.BLACK })
+                                val buf = java.nio.ByteBuffer.allocate(w * h); mb.copyPixelsToBuffer(buf); mb.recycle()
+                                val raw = buf.array(); d.setMask(l, ByteArray(w * h) { if ((raw[it].toInt() and 255) > 127) 1 else 0 })
+                            }
+                            Tool.Bucket -> detectTapGestures { o ->
+                                val l = d.sel() ?: return@detectTapGestures
+                                val inv = Matrix(); if (!l.matrix().invert(inv)) return@detectTapGestures
+                                val pt = floatArrayOf(o.x / vs(), o.y / vs()); inv.mapPoints(pt)
+                                val x = pt[0].toInt(); val y = pt[1].toInt()
+                                if (x !in 0 until l.bmp.width || y !in 0 until l.bmp.height) return@detectTapGestures
+                                d.snapshot(l)
+                                val m = floodMask(l.bmp, x, y, tol.toInt()); val w = l.bmp.width; val h = l.bmp.height
+                                val px = IntArray(w * h); l.bmp.getPixels(px, 0, w, 0, 0, w, h)
+                                val fill = (color and 0x00FFFFFF) or ((brushAlpha * 255).toInt() shl 24)
+                                for (i in px.indices) if (m[i].toInt() != 0) px[i] = fill
+                                l.bmp.setPixels(px, 0, w, 0, 0, w, h); d.touch()
+                            }
+                            Tool.Pick -> detectTapGestures { o ->
+                                val flat = d.render(); val x = (o.x / vs()).toInt().coerceIn(0, d.w - 1); val y = (o.y / vs()).toInt().coerceIn(0, d.h - 1)
+                                val c = flat.getPixel(x, y); flat.recycle()
+                                if ((c ushr 24) > 0) { color = c or (0xFF shl 24); toastRef.value("Picked that colour") } else toastRef.value("That spot is see-through")
+                            }
+                            Tool.Shape -> awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val l = d.sel() ?: return@awaitEachGesture
+                                val inv = Matrix(); if (!l.matrix().invert(inv)) return@awaitEachGesture
+                                fun local(o: Offset): FloatArray { val pt = floatArrayOf(o.x / vs(), o.y / vs()); inv.mapPoints(pt); return pt }
+                                val a = local(down.position); var b = a
+                                var last = down.position
+                                do { val ev = awaitPointerEvent(); last = ev.changes.first().position; ev.changes.forEach { it.consume() } } while (ev.changes.any { it.pressed })
+                                b = local(last)
+                                d.snapshot(l)
+                                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; alpha = (brushAlpha * 255).toInt(); strokeWidth = brush / l.scale / 4f; strokeCap = Paint.Cap.ROUND
+                                    style = if (filled && shape != "Line") Paint.Style.FILL else Paint.Style.STROKE }
+                                val cv = AndroidCanvas(l.bmp)
+                                val r = RectF(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
+                                when (shape) { "Rectangle" -> cv.drawRect(r, paint); "Circle" -> cv.drawOval(r, paint); else -> cv.drawLine(a[0], a[1], b[0], b[1], paint) }
+                                d.touch()
+                            }
+                            Tool.Adjust -> {}
                         }
                     }) {
                     d.version
@@ -339,20 +459,22 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                     drawIntoCanvas { cv ->
                         val nc = cv.nativeCanvas
                         val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-                        nc.save(); nc.scale(s, s)
+                        nc.saveLayer(null, null); nc.scale(s, s)
                         d.layers.forEach { l ->
                             if (!l.visible) return@forEach
-                            paint.alpha = (l.alpha * 255).toInt()
+                            paint.alpha = (l.alpha * 255).toInt(); paint.blendMode = BLENDS[l.blend].second
                             nc.drawBitmap(l.bmp, l.matrix(), paint)
                             if (l.id == d.maskLayer) d.maskPreview?.let { nc.drawBitmap(it, l.matrix(), null) }
                         }
                         nc.restore()
                     }
+                    if (lassoPath.size > 1) { val pth = androidx.compose.ui.graphics.Path(); pth.moveTo(lassoPath[0].x, lassoPath[0].y); lassoPath.drop(1).forEach { pth.lineTo(it.x, it.y) }
+                        drawPath(pth, Color(0xFF2F8CFF), style = androidx.compose.ui.graphics.drawscope.Stroke(4f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(14f, 10f)))) }
                 }
             }
             // ---- tools
             CompositionLocalProvider(LocalContentColor provides p.text) {
-            Column(Modifier.background(p.panel).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 330.dp).background(p.panel).verticalScroll(rememberScrollState()).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Tool.entries.forEach { t -> Chip(t.label, tool == t, { tool = t }) }
                 }
@@ -376,6 +498,50 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                             Text("${tol.toInt()}", Modifier.width(36.dp), style = MaterialTheme.typography.labelSmall)
                         }
                         Text("Tap a colour to select everything like it. Raise Reach to take in similar shades.", style = MaterialTheme.typography.bodySmall, color = p.secondaryText)
+                    }
+                    Tool.Lasso -> Text("Draw around what you want. Lift your finger to close the loop and select it.", style = MaterialTheme.typography.bodySmall, color = p.secondaryText)
+                    Tool.Bucket, Tool.Shape -> {
+                        if (tool == Tool.Bucket) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Reach", Modifier.width(56.dp), style = MaterialTheme.typography.labelLarge); Slider(tol, { tol = it }, Modifier.weight(1f), valueRange = 2f..120f); Text("${tol.toInt()}", Modifier.width(36.dp), style = MaterialTheme.typography.labelSmall) }
+                        else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Rectangle", "Circle", "Line").forEach { n -> Chip(n, shape == n, { shape = n }) }; if (shape != "Line") Chip(if (filled) "Filled" else "Outline", filled, { filled = !filled }) }
+                            Row(verticalAlignment = Alignment.CenterVertically) { Text("Line", Modifier.width(48.dp), style = MaterialTheme.typography.labelLarge); Slider(brush, { brush = it }, Modifier.weight(1f), valueRange = 4f..160f) }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("Opacity", Modifier.width(64.dp), style = MaterialTheme.typography.labelLarge); Slider(brushAlpha, { brushAlpha = it }, Modifier.weight(1f), valueRange = .05f..1f) }
+                        ColorRow(color, { color = it })
+                        Text(if (tool == Tool.Bucket) "Tap to fill the area of similar colour." else "Drag on the layer to draw the shape.", style = MaterialTheme.typography.bodySmall, color = p.secondaryText)
+                    }
+                    Tool.Pick -> { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(34.dp).clip(CircleShape).background(Color(color)).border(2.dp, p.panelBorder, CircleShape)); Spacer(Modifier.width(10.dp)); Text("Tap anywhere on the picture to use its colour for the brush, bucket, shapes and text.", style = MaterialTheme.typography.bodySmall, color = p.secondaryText) } }
+                    Tool.Adjust -> {
+                        val sel = d.sel()
+                        Text(if (d.mask != null) "Changes only the selected part of the layer." else "Changes the whole selected layer.", style = MaterialTheme.typography.bodySmall, color = p.secondaryText)
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("Brightness", Modifier.width(84.dp), style = MaterialTheme.typography.labelLarge); Slider(aBright, { aBright = it }, Modifier.weight(1f), valueRange = -.5f..0.5f) }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("Contrast", Modifier.width(84.dp), style = MaterialTheme.typography.labelLarge); Slider(aContrast, { aContrast = it }, Modifier.weight(1f), valueRange = -.6f..1f) }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("Colour", Modifier.width(84.dp), style = MaterialTheme.typography.labelLarge); Slider(aSat, { aSat = it }, Modifier.weight(1f), valueRange = -1f..1f) }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("Warmth", Modifier.width(84.dp), style = MaterialTheme.typography.labelLarge); Slider(aWarm, { aWarm = it }, Modifier.weight(1f), valueRange = -1f..1f) }
+                        fun applyTo(l: Layer, f: (Bitmap) -> Bitmap) {
+                            d.snapshot(l)
+                            val w = l.bmp.width; val h = l.bmp.height
+                            val out = f(l.bmp); val m = if (d.maskLayer == l.id) d.mask else null
+                            val a = IntArray(w * h); out.getPixels(a, 0, w, 0, 0, w, h)
+                            if (m != null) { val o = IntArray(w * h); l.bmp.getPixels(o, 0, w, 0, 0, w, h); for (i in a.indices) if (m[i].toInt() == 0) a[i] = o[i] }
+                            l.bmp.setPixels(a, 0, w, 0, 0, w, h); if (out !== l.bmp) out.recycle(); d.touch()
+                        }
+                        fun colourFx(l: Layer, cm: android.graphics.ColorMatrix) = applyTo(l) { src -> Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888).also { o -> AndroidCanvas(o).drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(cm) }) } }
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            WButton("Apply", { sel?.let { colourFx(it, adjustMatrix(aBright, aContrast, aSat, aWarm)); aBright = 0f; aContrast = 0f; aSat = 0f; aWarm = 0f } }, kind = ButtonKind.Primary, icon = WonderIcons.Check, enabled = sel != null)
+                            WButton("Black and white", { sel?.let { colourFx(it, android.graphics.ColorMatrix().apply { setSaturation(0f) }) } }, enabled = sel != null)
+                            WButton("Sepia", { sel?.let { colourFx(it, android.graphics.ColorMatrix().apply { setSaturation(0f); postConcat(android.graphics.ColorMatrix(floatArrayOf(1.1f, 0f, 0f, 0f, 20f, 0f, .95f, 0f, 0f, 8f, 0f, 0f, .75f, 0f, -10f, 0f, 0f, 0f, 1f, 0f))) }) } }, enabled = sel != null)
+                            WButton("Invert colours", { sel?.let { colourFx(it, android.graphics.ColorMatrix(floatArrayOf(-1f, 0f, 0f, 0f, 255f, 0f, -1f, 0f, 0f, 255f, 0f, 0f, -1f, 0f, 255f, 0f, 0f, 0f, 1f, 0f))) } }, enabled = sel != null)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("Blur", Modifier.width(84.dp), style = MaterialTheme.typography.labelLarge); Slider(aBlur, { aBlur = it }, Modifier.weight(1f), valueRange = 1f..40f); Text("${aBlur.toInt()}", Modifier.width(32.dp), style = MaterialTheme.typography.labelSmall) }
+                        WButton(if (working != null) "Blurring…" else "Blur", { sel?.let { l -> scope.launch { working = "Blurring"; val r = aBlur.toInt()
+                            val out = withContext(Dispatchers.Default) { blurBitmap(l.bmp, r) }; d.snapshot(l)
+                            val w = l.bmp.width; val h = l.bmp.height; val a = IntArray(w * h); out.getPixels(a, 0, w, 0, 0, w, h); val m = if (d.maskLayer == l.id) d.mask else null
+                            if (m != null) { val o = IntArray(w * h); l.bmp.getPixels(o, 0, w, 0, 0, w, h); for (i in a.indices) if (m[i].toInt() == 0) a[i] = o[i] }
+                            l.bmp.setPixels(a, 0, w, 0, 0, w, h); out.recycle(); d.touch(); working = null } } }, enabled = sel != null && working == null)
+                        Text("Blend with the layers under it", style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { BLENDS.forEachIndexed { i, (n, _) -> Chip(n, sel?.blend == i, { sel?.let { d.snapshot(); it.blend = i; d.touch() } }) } }
                     }
                     Tool.Box -> Text("Drag over the layer to select a rectangle.", style = MaterialTheme.typography.bodySmall, color = p.secondaryText)
                     Tool.Move -> Text("Drag to move the selected layer. Pinch to resize, twist to turn.", style = MaterialTheme.typography.bodySmall, color = p.secondaryText)
@@ -413,6 +579,8 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                             l.bmp.setPixels(px, 0, w, 0, 0, w, h); d.clearMask(); d.touch()
                         }, icon = WonderIcons.Check)
                         WButton("Invert", { d.mask?.let { m -> d.setMask(l, ByteArray(m.size) { if (m[it].toInt() == 0) 1 else 0 }) } }, icon = WonderIcons.SwapHoriz)
+                        WButton("Grow", { d.mask?.let { m -> d.setMask(l, resizeMask(m, l.bmp.width, l.bmp.height, 3)) } }, kind = ButtonKind.Secondary)
+                        WButton("Shrink", { d.mask?.let { m -> d.setMask(l, resizeMask(m, l.bmp.width, l.bmp.height, -3)) } }, kind = ButtonKind.Secondary)
                         WButton("Fill with colour", {
                             val m = d.mask ?: return@WButton
                             d.snapshot(l)
@@ -446,6 +614,11 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                         WButton("Duplicate", { d.snapshot(); val n = d.add(l.name + " copy", l.bmp.copy(Bitmap.Config.ARGB_8888, true), d.layers.indexOf(l) + 1); n.cx = l.cx + 30; n.cy = l.cy + 30; n.scale = l.scale; n.rot = l.rot; n.alpha = l.alpha }, icon = WonderIcons.ContentCopy)
                         WButton("Up", { val i = d.layers.indexOf(l); if (i < d.layers.size - 1) { d.snapshot(); d.layers.removeAt(i); d.layers.add(i + 1, l); d.touch() } }, icon = WonderIcons.ArrowUpward)
                         WButton("Down", { val i = d.layers.indexOf(l); if (i > 0) { d.snapshot(); d.layers.removeAt(i); d.layers.add(i - 1, l); d.touch() } }, icon = WonderIcons.ArrowDownward)
+                        WButton("Merge down", { val i = d.layers.indexOf(l); if (i > 0) { val below = d.layers[i - 1]; d.snapshot(below)
+                            val flat = Bitmap.createBitmap(d.w, d.h, Bitmap.Config.ARGB_8888); val cv = AndroidCanvas(flat); val pp = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+                            pp.alpha = (below.alpha * 255).toInt(); pp.blendMode = BLENDS[below.blend].second; cv.drawBitmap(below.bmp, below.matrix(), pp)
+                            pp.alpha = (l.alpha * 255).toInt(); pp.blendMode = BLENDS[l.blend].second; cv.drawBitmap(l.bmp, l.matrix(), pp)
+                            val n = Layer(below.id, below.name, flat, d.w / 2f, d.h / 2f); d.layers.removeAt(i); d.layers[i - 1] = n; d.selected = n.id; d.clearMask(); d.touch() } else toastRef.value("There is no layer under this one") }, icon = WonderIcons.Layers)
                         WButton("Flip", { d.snapshot(l); val m = Matrix().apply { postScale(-1f, 1f) }; l.bmp = Bitmap.createBitmap(l.bmp, 0, 0, l.bmp.width, l.bmp.height, m, true).copy(Bitmap.Config.ARGB_8888, true); d.clearMask(); d.touch() }, icon = WonderIcons.SwapHoriz)
                         WButton("Delete layer", { if (d.layers.size > 1) { d.snapshot(); d.layers.remove(l); d.selected = d.layers.last().id; d.clearMask(); d.touch() } else toastRef.value("Keep at least one layer") }, icon = WonderIcons.Delete, kind = ButtonKind.Danger)
                     }
@@ -462,6 +635,21 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                 }
             }
             }
+        }
+    }
+}
+
+/** A row of swatches plus a hue strip for any colour. */
+@Composable
+private fun ColorRow(color: Int, onPick: (Int) -> Unit) {
+    val p = wonderPalette()
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        listOf(0xFFE5483C, 0xFFF2A516, 0xFFFFE14D, 0xFF2E9E44, 0xFF1E7FE8, 0xFF8E44AD, 0xFFFFFFFF, 0xFF8A8F98, 0xFF1B1D21).forEach { c ->
+            Box(Modifier.size(30.dp).clip(CircleShape).background(Color(c)).border(if (color == c.toInt()) 3.dp else 1.dp, if (color == c.toInt()) p.accent else p.panelBorder, CircleShape).clickable { onPick(c.toInt()) })
+        }
+        listOf(0f, 30f, 60f, 120f, 180f, 210f, 240f, 270f, 300f, 330f).forEach { hue ->
+            val c = android.graphics.Color.HSVToColor(floatArrayOf(hue, .85f, .95f))
+            Box(Modifier.size(24.dp).clip(CircleShape).background(Color(c)).clickable { onPick(c) })
         }
     }
 }

@@ -1,5 +1,11 @@
 # Memories changelog
 
+## v0.5.13
+
+- Studio now has a lasso, paint bucket, shapes, colour picker, grow and shrink selection, blend modes, merge down and 24 steps of undo
+- Studio Adjust: brightness, contrast, colour, warmth, black and white, sepia, invert and blur on a layer or just the selected part
+- The Studio undo button now lights up as soon as there is something to undo, and the tool panel scrolls so the picture stays visible
+
 ## v0.5.12
 
 - New Layers editor: magic wand, box select, brush, eraser that leaves see-through areas, cut a part out onto its own layer, move, resize and turn layers, add photos and text, save as PNG with transparency
