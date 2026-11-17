@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.5.17
+
+- Studio remembers your brush size, reach and colour
+
 ## v0.5.16
 
 - New setting: how long a slideshow shows each photo

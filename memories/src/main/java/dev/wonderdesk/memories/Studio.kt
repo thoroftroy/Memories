@@ -242,9 +242,12 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
     }
     val d = doc
     var tool by remember { mutableStateOf(Tool.Move) }
-    var brush by remember { mutableFloatStateOf(36f) }
-    var tol by remember { mutableFloatStateOf(28f) }
-    var color by remember { mutableIntStateOf(0xFFE5483C.toInt()) }
+    val sprefs = remember { context.getSharedPreferences("memories", android.content.Context.MODE_PRIVATE) }
+    var brush by remember { mutableFloatStateOf(sprefs.getFloat("studioBrush", 36f)) }
+    var tol by remember { mutableFloatStateOf(sprefs.getFloat("studioTol", 28f)) }
+    var color by remember { mutableIntStateOf(sprefs.getInt("studioColor", 0xFFE5483C.toInt())) }
+    // Studio remembers your brush size, reach and colour for next time.
+    LaunchedEffect(brush, tol, color) { kotlinx.coroutines.delay(400); sprefs.edit().putFloat("studioBrush", brush).putFloat("studioTol", tol).putInt("studioColor", color).apply() }
     var brushAlpha by remember { mutableFloatStateOf(1f) }
     var shape by remember { mutableStateOf("Rectangle") }
     var filled by remember { mutableStateOf(true) }
