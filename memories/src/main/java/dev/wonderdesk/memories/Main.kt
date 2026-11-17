@@ -173,8 +173,8 @@ fun MemoriesApp() {
     fun closeExternal() { val back = Nav.fromApp; Nav.fromApp = false; Nav.secure = false; if (back) (context as Activity).finish() }
     studio?.let { u -> StudioScreen(u, onClose = { studio = null; tick++; if (viewing == null && external == null) closeExternal() }); return }
     editing?.let { u -> EditorScreen(u, onClose = { editing = null; tick++; if (viewing == null && external == null) closeExternal() }, onStudio = { studio = u; editing = null }); return }
-    external?.let { u -> SingleViewer(u, Nav.externalMime, onClose = { external = null; closeExternal() }, onEdit = { editing = u }); return }
-    viewing?.let { (list, i) -> Viewer(list, i, onClose = { viewing = null; tick++; closeExternal() }, onEdit = { editing = it }, secure = Nav.secure); return }
+    external?.let { u -> SingleViewer(u, Nav.externalMime, onClose = { external = null; closeExternal() }, onEdit = { editing = u }, onStudio = { studio = u }); return }
+    viewing?.let { (list, i) -> Viewer(list, i, onClose = { viewing = null; tick++; closeExternal() }, onEdit = { editing = it }, onStudio = { studio = it }, secure = Nav.secure); return }
     if (!ok) {
         WonderApp(appName = "Memories", about = ABOUT) {
             EmptyState("All your photos in one place", "Allow Memories to see the photos and videos on this phone. They stay on your phone.",
@@ -633,7 +633,7 @@ private fun Context.hasApp(pkg: String) = runCatching { packageManager.getPackag
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (Uri) -> Unit, secure: Boolean = false) = WonderKitTheme {
+private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (Uri) -> Unit, onStudio: (Uri) -> Unit = {}, secure: Boolean = false) = WonderKitTheme {
     val context = LocalContext.current
     val activity = context as Activity
     val c = rememberPlayerChrome()
@@ -699,6 +699,7 @@ private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (
                     ViewerAction(if (isFav(ph)) WonderIcons.Favorite else WonderIcons.FavoriteBorder, "Favourite", active = isFav(ph)) {
                         pending = "fav" to ph; sender.launch(IntentSenderRequest.Builder(Gallery.favoriteRequest(context, listOf(ph.uri), !isFav(ph)).intentSender).build()) }
                     if (!ph.video) ViewerAction(WonderIcons.Edit, "Edit") { onEdit(ph.uri) }
+                    if (!ph.video) ViewerAction(WonderIcons.Layers, "Studio") { onStudio(ph.uri) }
                     else if (context.hasApp("dev.wonderdesk.cinema")) ViewerAction(WonderIcons.ContentCut, "Edit") {
                         context.launchSafely(Intent("dev.wonderdesk.cinema.EDIT").setPackage("dev.wonderdesk.cinema").setDataAndType(ph.uri, "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
                             context.launchSafely(Intent(Intent.ACTION_VIEW).setPackage("dev.wonderdesk.cinema").setDataAndType(ph.uri, "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) {}
@@ -775,7 +776,7 @@ private fun InfoDialog(ph: Photo, onDismiss: () -> Unit) {
 
 /** A photo or video opened from another app (Files, a chat, a camera) that isn't in the library. */
 @Composable
-private fun SingleViewer(uri: Uri, mime: String?, onClose: () -> Unit, onEdit: () -> Unit) = WonderKitTheme {
+private fun SingleViewer(uri: Uri, mime: String?, onClose: () -> Unit, onEdit: () -> Unit, onStudio: () -> Unit = {}) = WonderKitTheme {
     val context = LocalContext.current
     val c = rememberPlayerChrome()
     val video = mime?.startsWith("video") == true || (mime == null && context.contentResolver.getType(uri)?.startsWith("video") == true)
@@ -790,6 +791,7 @@ private fun SingleViewer(uri: Uri, mime: String?, onClose: () -> Unit, onEdit: (
             ViewerTopBar(ph.name, null, onBack = onClose) {
                 HudButton(WonderIcons.Share, "Share", c, 44.dp) { context.share(uri, ph.mime) {} }
                 if (!video) HudButton(WonderIcons.Edit, "Edit", c, 44.dp) { onEdit() }
+                if (!video) HudButton(WonderIcons.Layers, "Studio", c, 44.dp) { onStudio() }
             }
         }
     }

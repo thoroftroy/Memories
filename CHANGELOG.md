@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.5.15
+
+- Studio, the layered editor with magic wand, lasso, cut-outs, transparency, text, shapes and blend modes, now has its own button in the photo viewer instead of hiding inside Edit
+
 ## v0.5.14
 
 - New settings: photos per row, keep the screen on while viewing, and Studio remembers PNG or JPEG
