@@ -252,7 +252,7 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
     var aBlur by remember { mutableFloatStateOf(4f) }
     var lassoPath by remember { mutableStateOf<List<Offset>>(emptyList()) }
     var working by remember { mutableStateOf<String?>(null) }
-    var png by remember { mutableStateOf(true) }
+    var png by remember { mutableStateOf(context.getSharedPreferences("memories", android.content.Context.MODE_PRIVATE).getBoolean("studioPng", true)) }
     var saving by remember { mutableStateOf(false) }
     var textAsk by remember { mutableStateOf(false) }
     var replaceAsk by remember { mutableStateOf(false) }
@@ -630,8 +630,8 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Save as", style = MaterialTheme.typography.labelLarge)
-                    Chip("PNG (keeps see-through)", png, { png = true })
-                    Chip("JPEG (smaller)", !png, { png = false })
+                    Chip("PNG (keeps see-through)", png, { png = true; context.getSharedPreferences("memories", android.content.Context.MODE_PRIVATE).edit().putBoolean("studioPng", true).apply() })
+                    Chip("JPEG (smaller)", !png, { png = false; context.getSharedPreferences("memories", android.content.Context.MODE_PRIVATE).edit().putBoolean("studioPng", false).apply() })
                 }
             }
             }

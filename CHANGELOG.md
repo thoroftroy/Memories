@@ -1,5 +1,11 @@
 # Memories changelog
 
+## v0.5.14
+
+- New settings: photos per row, keep the screen on while viewing, and Studio remembers PNG or JPEG
+- Text size and accent colour chosen in Control Room now apply here
+- New Rotate with the phone switch in Settings. Rotates by default
+
 ## v0.5.13
 
 - Studio now has a lasso, paint bucket, shapes, colour picker, grow and shrink selection, blend modes, merge down and 24 steps of undo
