@@ -33,7 +33,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.util.Locale
 
-enum class PhotoOrder(val label: String) { ORIGINAL("Selection order"), NAME_ASC("Name A–Z"), NAME_DESC("Name Z–A") }
+enum class PhotoOrder(val label: String) { ORIGINAL("Selection order"), NAME_ASC("Name A to Z"), NAME_DESC("Name Z to A") }
 fun comparePhotoNames(a: String, b: String, order: PhotoOrder): Int {
     val result = a.lowercase(Locale.ROOT).compareTo(b.lowercase(Locale.ROOT))
     return when (order) {
