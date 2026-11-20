@@ -658,7 +658,14 @@ private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (
         if (r.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
         when (what) {
             "fav" -> favs[ph.id] = !(favs[ph.id] ?: ph.favorite)
-            "trash" -> { gone += ph.id; if (gone.size >= list.size) onClose() }
+            "trash" -> {
+                val last = items.size <= 1
+                gone += ph.id
+                // The list is kept app-wide so a theme change returns to the same photo; take the deleted one out of it too,
+                // or leaving and coming back would reopen on a photo that no longer exists.
+                Nav.viewing.value = Nav.viewing.value?.let { (l, i) -> val nl = l.filter { it.id != ph.id }; if (nl.isEmpty()) null else nl to (if (i < 0) i else i.coerceIn(0, nl.lastIndex)) }
+                if (last) onClose()
+            }
         }
     }
     fun isFav(ph: Photo) = favs[ph.id] ?: ph.favorite

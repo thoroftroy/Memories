@@ -1,5 +1,10 @@
 # Memories changelog
 
+## v0.5.18
+
+- Fixed tapping a playing video never bringing the controls back (the tap used the controls state from when the video started)
+- Fixed Memories reopening on a photo you had just deleted: the deleted photo is now removed from the open viewer's list as well
+
 ## v0.5.17
 
 - Studio remembers your brush size, reach and colour
