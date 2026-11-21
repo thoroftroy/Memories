@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.7.1
+
+- Screen recorder: the capture prompt is now limited to the entire screen (Android's default "A single app" mode records only one window and leaves everything else black), and recordings are tagged with standard video colours, so they no longer come out far too dark
+
 ## v0.7.0
 
 - Cinema is now part of Memories. The Videos tab is Cinema's full video library and player (resume, gestures, subtitles, speed, picture-in-picture, network streams, casting, the editor), the Record tab is the screen recorder with clip mode, and everything Memories did before is unchanged
