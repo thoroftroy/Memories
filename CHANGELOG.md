@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.5.19
+
+- Fixed a gap above the keyboard in screens with a bottom tab bar: the tab bar now steps aside while you type, so you can see what you are writing
+
 ## v0.5.18
 
 - Fixed tapping a playing video never bringing the controls back (the tap used the controls state from when the video started)
