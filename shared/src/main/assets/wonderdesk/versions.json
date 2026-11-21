@@ -3,8 +3,7 @@
   "apps": {
     "wayfinder": "0.2.4",
     "packrat": "0.2.5",
-    "memories": "0.7.3",
-    "cinema": "0.2.3",
+    "memories": "0.7.4",
     "melody": "0.2.4",
     "pages": "0.2.3",
     "gateway": "0.2.2",

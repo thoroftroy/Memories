@@ -75,6 +75,16 @@ object Gallery {
      * then shown in quick passes, a rough one almost at once and sharper ones after it, so something is on screen as early as possible.
      */
     fun loadProgressive(c: Context, uri: Uri, max: Int = 2560, onProgress: (read: Long, total: Long) -> Unit, onPass: (Bitmap) -> Unit): Bitmap? = runCatching {
+        // A picture on a computer (through Ripple): the computer makes a tiny preview, then a medium one, then a large one (each a few kilobytes
+        // to a few hundred), so something is on screen almost at once and gets sharper, while the full picture downloads after.
+        if (uri.authority == "dev.wonderdesk.ripple.link") {
+            for (px in intArrayOf(64, 320, 1280)) {
+                val b = runCatching {
+                    c.contentResolver.openInputStream(uri.buildUpon().appendQueryParameter("thumb", px.toString()).build())?.use { BitmapFactory.decodeStream(it) }
+                }.getOrNull()
+                if (b != null) onPass(b) else if (px == 64) break   // this computer can't make previews yet: fetch the whole picture as before
+            }
+        }
         val total = runCatching { c.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { if (it.moveToFirst()) it.getLong(0) else -1L } }.getOrNull() ?: -1L
         val out = java.io.ByteArrayOutputStream(if (total in 1..64_000_000) total.toInt() else 1 shl 20)
         c.contentResolver.openInputStream(uri)!!.use { i ->

@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.7.4
+
+- Pictures from a computer through Ripple show a rough preview almost at once, then two sharper ones, while the full picture downloads with a progress bar
+
 ## v0.7.3
 
 - The symbols drifting in the background are smaller and fainter so they no longer crowd text; selected segments and chips are readable in every look (including Super); the warning banner at the top has a solid backing so its text is easy to read
