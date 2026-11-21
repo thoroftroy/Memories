@@ -1,5 +1,14 @@
 # Memories changelog
 
+## v0.7.2
+
+- The animated background is now drawn directly on the screen at full sharpness instead of a small picture stretched up, so it is smooth and no longer looks pixelated; the grain over it is much subtler, and long tab names (like Feedback) shrink to fit instead of being cut off
+- A Sort button on the Photos toolbar, so the sort options are easy to find
+- Favouriting or deleting a photo opened from Wayfinder no longer crashes; it is matched to your library, and you are told if it isn't in it
+- Back from a photo or video opened from another app closes Memories completely and returns you to where you were
+- A smoother scroll handle that no longer jumps around
+- Pictures from a computer (Ripple) are read once instead of three times, show a real progress bar with speed and time left, and appear rough-to-sharp in quick passes
+
 ## v0.7.1
 
 - Screen recorder: the capture prompt is now limited to the entire screen (Android's default "A single app" mode records only one window and leaves everything else black), and recordings are tagged with standard video colours, so they no longer come out far too dark

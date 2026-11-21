@@ -70,6 +70,29 @@ object Gallery {
         if (deg == 0) b else Bitmap.createBitmap(b, 0, 0, b.width, b.height, Matrix().apply { postRotate(deg.toFloat()) }, true)
     }.getOrNull()
 
+    /**
+     * For a picture that is not in the library (one coming from a computer through Ripple, a chat, a share): the data is read once, with progress,
+     * then shown in quick passes, a rough one almost at once and sharper ones after it, so something is on screen as early as possible.
+     */
+    fun loadProgressive(c: Context, uri: Uri, max: Int = 2560, onProgress: (read: Long, total: Long) -> Unit, onPass: (Bitmap) -> Unit): Bitmap? = runCatching {
+        val total = runCatching { c.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { if (it.moveToFirst()) it.getLong(0) else -1L } }.getOrNull() ?: -1L
+        val out = java.io.ByteArrayOutputStream(if (total in 1..64_000_000) total.toInt() else 1 shl 20)
+        c.contentResolver.openInputStream(uri)!!.use { i ->
+            val buf = ByteArray(64 * 1024); var read = 0L
+            while (true) { val n = i.read(buf); if (n < 0) break; out.write(buf, 0, n); read += n; onProgress(read, total) }
+        }
+        val bytes = out.toByteArray()
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+        var s = 1; while (maxOf(o.outWidth, o.outHeight) / (s * 2) >= max) s *= 2
+        val deg = runCatching { ExifInterface(java.io.ByteArrayInputStream(bytes)).rotationDegrees }.getOrDefault(0)
+        fun rotate(b: Bitmap) = if (deg == 0) b else Bitmap.createBitmap(b, 0, 0, b.width, b.height, Matrix().apply { postRotate(deg.toFloat()) }, true)
+        // Rough first, then sharper, then the full size: each step is worth showing only if it is clearly better than the last.
+        var pass = maxOf(s * 8, 8)
+        while (pass > s * 2) { runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = pass }) }.getOrNull()?.let { onPass(rotate(it)) }; pass /= 2 }
+        rotate(BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = s })!!)
+    }.getOrNull()
+
     data class Info(val rows: List<Pair<String, String>>, val lat: Double?, val lon: Double?)
 
     fun info(c: Context, p: Photo): Info {
@@ -92,6 +115,28 @@ object Gallery {
             }
         }
         return Info(rows, lat, lon)
+    }
+
+    /**
+     * The library entry for a photo or video that was handed over by another app (Wayfinder shows files by their own address).
+     * Favouriting, deleting and moving only work on library entries, so a file is matched to its entry by name and size; null if it isn't in the library.
+     */
+    fun libraryUri(c: Context, ph: Photo): Uri? {
+        if (ph.uri.authority == "media") return ph.uri
+        return runCatching {
+            var name = ph.name; var size = 0L
+            c.contentResolver.query(ph.uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE), null, null, null)?.use { cur ->
+                if (cur.moveToFirst()) { cur.getString(0)?.let { name = it }; size = cur.getLong(1) }
+            }
+            val q = MediaStore.Files.getContentUri("external")
+            c.contentResolver.query(q, arrayOf(MediaStore.Files.FileColumns._ID, MediaStore.Files.FileColumns.MEDIA_TYPE), "${MediaStore.MediaColumns.DISPLAY_NAME}=?" + if (size > 0) " AND ${MediaStore.MediaColumns.SIZE}=?" else "",
+                if (size > 0) arrayOf(name, size.toString()) else arrayOf(name), null)?.use { cur ->
+                if (cur.moveToFirst()) {
+                    val base = if (cur.getInt(1) == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    android.content.ContentUris.withAppendedId(base, cur.getLong(0))
+                } else null
+            }
+        }.getOrNull()
     }
 
     fun favoriteRequest(c: Context, uris: List<Uri>, fav: Boolean): PendingIntent = MediaStore.createFavoriteRequest(c.contentResolver, uris, fav)

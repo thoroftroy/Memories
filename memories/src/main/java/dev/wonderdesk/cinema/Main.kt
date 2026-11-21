@@ -132,7 +132,7 @@ fun CinemaApp() {
     }
     val p = playingItem; val e = editing
     when {
-        e != null -> EditorScreen(e.first, e.second, onClose = { editing = null; (context as? android.app.Activity)?.finish() })
+        e != null -> EditorScreen(e.first, e.second, onClose = { editing = null; (context as? android.app.Activity)?.let { a -> if (a.isTaskRoot) a.finishAndRemoveTask() else a.finish() } })
         p != null -> key(p.first) {
             // Next or previous video in the same folder, by name: episodes play in order.
             fun step(delta: Int, wholeLibrary: Boolean = false) {
@@ -145,7 +145,7 @@ fun CinemaApp() {
                     else if (delta != 0) android.widget.Toast.makeText(context, if (delta > 0) "That is the last video" else "That is the first video", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
-            PlayerScreen(p.first, p.second, onClose = { playingItem = null; (context as? android.app.Activity)?.finish() }, onEdit = { editing = p; playingItem = null }, onEnded = { step(1) }, onStep = { step(it, wholeLibrary = true) }, onDeleted = { playingItem = null; (context as? android.app.Activity)?.finish() })
+            PlayerScreen(p.first, p.second, onClose = { playingItem = null; (context as? android.app.Activity)?.let { a -> if (a.isTaskRoot) a.finishAndRemoveTask() else a.finish() } }, onEdit = { editing = p; playingItem = null }, onEnded = { step(1) }, onStep = { step(it, wholeLibrary = true) }, onDeleted = { playingItem = null; (context as? android.app.Activity)?.let { a -> if (a.isTaskRoot) a.finishAndRemoveTask() else a.finish() } })
         }
         else -> StandaloneLibrary(onPlay = { playingItem = it.uri to it.title }, onEdit = { editing = it.uri to it.title })
     }

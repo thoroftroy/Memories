@@ -194,7 +194,7 @@ fun MemoriesApp() {
         val idx = list.indexOfFirst { it.id == id }
         if (idx >= 0) { viewing = (if (Nav.secure) list.filter { it.id == id || it.taken >= System.currentTimeMillis() - 10 * 60_000 } else list).let { l -> l to l.indexOfFirst { it.id == id } }; external = null }
     }
-    fun closeExternal() { val back = Nav.fromApp; Nav.fromApp = false; Nav.secure = false; if (back) (context as Activity).finish() }
+    fun closeExternal() { val back = Nav.fromApp; Nav.fromApp = false; Nav.secure = false; if (back) (context as Activity).let { a -> if (a.isTaskRoot) a.finishAndRemoveTask() else a.finish() } }
     studio?.let { u -> StudioScreen(u, onClose = { studio = null; tick++; if (viewing == null && external == null) closeExternal() }); return }
     editing?.let { u -> EditorScreen(u, onClose = { editing = null; tick++; if (viewing == null && external == null) closeExternal() }, onStudio = { studio = u; editing = null }); return }
     external?.let { u -> SingleViewer(u, Nav.externalMime, onClose = { external = null; closeExternal() }, onEdit = { editing = u }, onStudio = { studio = u }); return }
@@ -268,6 +268,15 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
     if (showTrash) { TrashScreen(onClose = { showTrash = false; refresh() }); return }
     if (showClean) { CleanUpScreen(photos.orEmpty(), onClose = { showClean = false; refresh() }); return }
     if (selected.isNotEmpty() || album != null) BackHandler { if (selected.isNotEmpty()) selected = emptySet() else album = null }
+    var showSort by remember { mutableStateOf(false) }
+    if (showSort) WonderDialog(onDismissRequest = { showSort = false }, title = { Text("Sort photos") }, text = {
+        Column {
+            LibraryPrefs.SORTS.forEach { (id, name) ->
+                ListRow(name, selected = LibraryPrefs.sort == id, onClick = { LibraryPrefs.sort = id; context.prefs("memories").edit().putString("sort", id).apply(); showSort = false })
+            }
+            Text("Name and size show one plain list with no date headings.", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText)
+        }
+    }, confirmButton = { TextButton(onClick = { showSort = false }) { Text("Close") } })
     WonderApp(needs = APP_NEEDS, appName = "Memories", about = ABOUT,
         tabs = if (selected.isNotEmpty()) emptyList() else listOf(WonderTab("photos", "Photos", WonderIcons.PhotoLibrary), WonderTab("albums", "Albums", WonderIcons.Collections),
             WonderTab("favorites", "Favourites", WonderIcons.Favorite), WonderTab("videos", "Videos", WonderIcons.Movie), WonderTab("record", "Record", WonderIcons.Videocam)),
@@ -288,6 +297,7 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
             } else {
                 if (tab == "videos") dev.wonderdesk.cinema.CinemaToolbar()
                 if (tab != "videos" && tab != "record") ToolbarButton(WonderIcons.Search, "Search", { searching = !searching; if (!searching) q = "" })
+                if (tab != "videos" && tab != "record") ToolbarButton(WonderIcons.Sort, "Sort: ${LibraryPrefs.SORTS.firstOrNull { it.first == LibraryPrefs.sort }?.second ?: "Newest first"}", { showSort = true })
                 if (tab != "videos" && tab != "record" && (tab != "albums" || album != null)) ToolbarButton(if (columns > 3) WonderIcons.ZoomIn else WonderIcons.ZoomOut, "Grid size", { columns = if (columns >= 6) 3 else columns + 1; context.prefs("memories").edit().putInt("cols", columns).apply() })
             }
         },
@@ -506,7 +516,13 @@ private fun DateScroller(state: androidx.compose.foundation.lazy.grid.LazyGridSt
     val scrolling = state.isScrollInProgress || dragging != null
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(scrolling) { if (scrolling) shown = true else { delay(1400); shown = false } }
-    val frac = dragging ?: (state.firstVisibleItemIndex.toFloat() / (total - 1).coerceAtLeast(1))
+    // Where the list really is, including how far into the first visible row it has moved, so the handle glides instead of stepping.
+    val listFrac = run {
+        val rowH = state.layoutInfo.visibleItemsInfo.firstOrNull()?.size?.height?.coerceAtLeast(1) ?: 1
+        ((state.firstVisibleItemIndex + state.firstVisibleItemScrollOffset.toFloat() / rowH) / (total - 1).coerceAtLeast(1)).coerceIn(0f, 1f)
+    }
+    val listFracNow by rememberUpdatedState(listFrac)
+    val frac = dragging ?: listFrac
     val alpha by androidx.compose.animation.core.animateFloatAsState(if (shown) 1f else 0f, label = "scroller")
     if (alpha == 0f && !shown) return
     BoxWithConstraints(modifier.fillMaxHeight().width(120.dp).padding(vertical = 16.dp)) {
@@ -520,9 +536,9 @@ private fun DateScroller(state: androidx.compose.foundation.lazy.grid.LazyGridSt
             Box(Modifier.size(28.dp, 44.dp).shadow(4.dp, RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp)).clip(RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp))
                 .background(p.panel).border(1.dp, p.panelBorder, RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp))
                 .pointerInput(total) {
-                    detectVerticalDragGestures(onDragStart = { dragging = frac }, onDragEnd = { dragging = null }, onDragCancel = { dragging = null }) { ch, d ->
+                    detectVerticalDragGestures(onDragStart = { dragging = listFracNow }, onDragEnd = { dragging = null }, onDragCancel = { dragging = null }) { ch, d ->
                         ch.consume()
-                        val f = ((dragging ?: frac) + d / (track - thumbPx)).coerceIn(0f, 1f); dragging = f
+                        val f = ((dragging ?: listFracNow) + d / (track - thumbPx)).coerceIn(0f, 1f); dragging = f
                         scope.launch { state.scrollToItem((f * (total - 1)).toInt()) }
                     }
                 }, contentAlignment = Alignment.Center) { Icon(WonderIcons.SwapVert, "Scroll through dates", Modifier.size(18.dp), tint = p.secondaryText) }
@@ -740,11 +756,16 @@ private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (
                 ViewerDock {
                     ViewerAction(WonderIcons.Share, "Share") { context.share(ph.uri, ph.mime.ifBlank { if (ph.video) "video/*" else "image/*" }) {} }
                     ViewerAction(if (isFav(ph)) WonderIcons.Favorite else WonderIcons.FavoriteBorder, "Favourite", active = isFav(ph)) {
-                        pending = "fav" to ph; sender.launch(IntentSenderRequest.Builder(Gallery.favoriteRequest(context, listOf(ph.uri), !isFav(ph)).intentSender).build()) }
+                        val lu = Gallery.libraryUri(context, ph)
+                        if (lu == null) android.widget.Toast.makeText(context, "This file isn't in your photo library, so it can't be favourited", android.widget.Toast.LENGTH_LONG).show()
+                        else { pending = "fav" to ph; runCatching { sender.launch(IntentSenderRequest.Builder(Gallery.favoriteRequest(context, listOf(lu), !isFav(ph)).intentSender).build()) } } }
                     if (!ph.video) ViewerAction(WonderIcons.Edit, "Edit") { onEdit(ph.uri) }
                     if (!ph.video) ViewerAction(WonderIcons.Layers, "Studio") { onStudio(ph.uri) }
                     else ViewerAction(WonderIcons.ContentCut, "Edit") { openVideoEditor(context, ph.uri) }
-                    ViewerAction(WonderIcons.Delete, "Delete", danger = true) { pending = "trash" to ph; sender.launch(IntentSenderRequest.Builder(Gallery.trashRequest(context, listOf(ph.uri)).intentSender).build()) }
+                    ViewerAction(WonderIcons.Delete, "Delete", danger = true) {
+                        val lu = Gallery.libraryUri(context, ph)
+                        if (lu == null) android.widget.Toast.makeText(context, "This file isn't in your photo library, so it can't be deleted from here", android.widget.Toast.LENGTH_LONG).show()
+                        else { pending = "trash" to ph; runCatching { sender.launch(IntentSenderRequest.Builder(Gallery.trashRequest(context, listOf(lu)).intentSender).build()) } } }
                 }
             }
         }
@@ -774,12 +795,33 @@ private fun Filmstrip(items: List<Photo>, current: Int, onPick: (Int) -> Unit) {
 private fun ZoomImage(ph: Photo, onTap: () -> Unit, onDismiss: (() -> Unit)? = null, onFade: (Float) -> Unit = {}) {
     val context = LocalContext.current
     var bmp by remember(ph.id) { mutableStateOf(Gallery.cached(ph, 512) ?: Gallery.cached(ph, 256)) }
+    var prog by remember(ph.id) { mutableStateOf<Pair<Long, Long>?>(null) }
+    var sharpening by remember(ph.id) { mutableStateOf(false) }
+    val started = remember(ph.id) { System.currentTimeMillis() }
     LaunchedEffect(ph.id) {
-        if (bmp == null) bmp = withContext(Dispatchers.IO) { Gallery.thumb(context, ph, 512) }
-        bmp = withContext(Dispatchers.IO) { Gallery.load(context, ph.uri) ?: bmp }
+        if (ph.uri.authority == "media") {
+            if (bmp == null) bmp = withContext(Dispatchers.IO) { Gallery.thumb(context, ph, 512) }
+            bmp = withContext(Dispatchers.IO) { Gallery.load(context, ph.uri) ?: bmp }
+        } else {
+            // Not in the library (a computer's folder through Ripple, a share): read once with progress, show rough-to-sharp passes.
+            sharpening = true
+            bmp = withContext(Dispatchers.IO) { Gallery.loadProgressive(context, ph.uri, onProgress = { r, t -> prog = r to t }, onPass = { b -> bmp = b }) ?: bmp }
+            sharpening = false
+        }
     }
     val img = remember(bmp) { bmp?.asImageBitmap() }
-    ZoomableImage(img, ph.name, onTap = onTap, onDismiss = onDismiss, onDismissProgress = onFade)
+    if (img == null) {
+        val (r, t) = prog ?: (0L to -1L)
+        val speed = (r * 1000f / (System.currentTimeMillis() - started).coerceAtLeast(1)).toLong()
+        Box(Modifier.fillMaxSize().clickable(onClick = onTap), contentAlignment = Alignment.Center) {
+            LoadingStatus("Loading ${ph.name}", progress = if (t > 0) (r.toFloat() / t).coerceIn(0f, 1f) else null,
+                detail = if (t > 0) "${dev.wonderdesk.shared.formatBytes(r)} of ${dev.wonderdesk.shared.formatBytes(t)}" + if (speed > 0) " · ${dev.wonderdesk.shared.formatBytes(speed)}/s" else "" else if (r > 0) "${dev.wonderdesk.shared.formatBytes(r)} so far" else "Waiting for the first data",
+                startedAt = started)
+        }
+    } else Box(Modifier.fillMaxSize()) {
+        ZoomableImage(img, ph.name, onTap = onTap, onDismiss = onDismiss, onDismissProgress = onFade)
+        if (sharpening && prog != null) Text("Sharpening…", Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = .55f)).padding(horizontal = 12.dp, vertical = 6.dp), color = Color.White, style = MaterialTheme.typography.labelMedium)
+    }
 }
 
 @Composable
