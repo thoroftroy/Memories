@@ -145,7 +145,17 @@ fun MemoriesApp() {
         MainActivity.incoming.value = null; (context as ComponentActivity).intent = Intent()
         when (i?.action) {
             in REVIEW_ACTIONS -> if (i.data != null) {
-                Nav.fromApp = true; Nav.secure = i.action == "android.provider.action.REVIEW_SECURE"; Nav.externalMime = i.type; viewing = null; external = i.data
+                val clip = i.clipData; val at = i.getIntExtra("dev.wonderdesk.FOLDER_INDEX", -1)
+                if (clip != null && clip.itemCount > 1 && at >= 0) {
+                    // Another Wonderdesk app (Wayfinder) opened one item of a folder: show the whole folder to swipe through, and Back returns to it.
+                    val list = (0 until clip.itemCount).mapNotNull { k -> clip.getItemAt(k).uri }.mapIndexed { k, u ->
+                        val mime = context.contentResolver.getType(u) ?: ""
+                        val nm = u.getQueryParameter("name") ?: u.lastPathSegment?.substringAfterLast('/') ?: "item $k"
+                        val video = mime.startsWith("video/") || nm.substringAfterLast('.', "").lowercase() in setOf("mp4", "mkv", "mov", "webm", "3gp", "avi")
+                        Photo(-(k + 1L), u, nm, 0L, 0L, 0, 0, "", "", video, 0L, false, mime)
+                    }
+                    Nav.fromApp = true; Nav.secure = false; external = null; viewing = list to at.coerceIn(0, list.lastIndex)
+                } else { Nav.fromApp = true; Nav.secure = i.action == "android.provider.action.REVIEW_SECURE"; Nav.externalMime = i.type; viewing = null; external = i.data }
             }
             Intent.ACTION_EDIT -> { Nav.fromApp = true; editing = i.data }
             CameraLink.ACTION_LATEST -> { Nav.secure = i.getBooleanExtra("secure", false); Nav.fromApp = Nav.secure; editing = null; external = null; Nav.latest.value = true }
@@ -605,7 +615,7 @@ private fun ColumnScope.MemoriesSettings() {
                 else -> "Pixel Camera opens Google Photos while it's turned on. This takes over once Google Photos is off"
             }, icon = WonderIcons.PhotoCamera, tint = Color(0xFF2E9E44),
             trailing = { Switch(linked, { if (it) guide = true else SpecialAccess.open(context, SpecialAccess.Kind.ACCESSIBILITY, CameraLink::class.java) }) },
-            onClick = { if (linked) SpecialAccess.open(context, SpecialAccess.Kind.ACCESSIBILITY, CameraLink::class.java) else guide = true })
+            onClick = { if (linked) SpecialAccess.open(context, SpecialAccess.Kind.ACCESSIBILITY, CameraLink::class.java) else guide = true }, help = "Pixel Camera always opens Google Photos. This lets Memories show your newest photo when you tap the camera's gallery button.")
         PanelDivider()
         ListRow("Newest photo shortcut", subtitle = "Hold the Memories icon on your home screen for “Newest photo”", icon = WonderIcons.PhotoLibrary, tint = Color(0xFF8E44AD))
     }
