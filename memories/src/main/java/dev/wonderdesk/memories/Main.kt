@@ -74,6 +74,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import dev.wonderdesk.cinema.CinemaSettingsPanels
 import dev.wonderdesk.shared.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -93,15 +94,28 @@ private val APP_NEEDS by lazy { listOf(
     WonderNeed("Photos and videos", "Shows every picture and video on your phone; they stay on the phone", anyOf = true,
         permissions = if (android.os.Build.VERSION.SDK_INT >= 33) listOf(android.Manifest.permission.READ_MEDIA_IMAGES, android.Manifest.permission.READ_MEDIA_VIDEO) else listOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)),
     WonderNeed("Photo locations", "Shows where each photo was taken in Details", required = false, permissions = listOf(android.Manifest.permission.ACCESS_MEDIA_LOCATION)),
+    WonderNeed("Notifications", "Shows the screen-recording notification with Stop and Clip buttons, so you can always see it is recording", required = false, permissions = listOf(android.Manifest.permission.POST_NOTIFICATIONS)),
+    WonderNeed("Microphone for recordings", "Lets screen recordings include your voice when you ask for it", required = false, permissions = listOf(android.Manifest.permission.RECORD_AUDIO)),
     WonderNeed("Pixel Camera link", "Makes Pixel Camera's thumbnail open Memories while Google Photos is off", required = false, access = SpecialAccess.Kind.ACCESSIBILITY, component = CameraLink::class.java),
 ) }
 
 private const val ABOUT = "Memories shows every photo and video on your phone in a timeline and by album, with On this day, favourites and a 30-day trash. " +
-    "Photos zoom and swipe away, videos play right in the viewer, and camera apps open their newest shot here. Edit with crop, rotate, filters, colour and drawing; edits are saved as copies."
+    "Photos zoom and swipe away, videos play right in the viewer, and camera apps open their newest shot here. Edit with crop, rotate, filters, colour and drawing; edits are saved as copies. " +
+    "The Videos tab is a full video player with resume, gestures, subtitles, speed, picture-in-picture, network streams, casting and an editor, and the Record tab records your screen, with a clip mode that saves the last moments."
 
 private val PERMS = if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 private fun granted(c: Context) = PERMS.all { ContextCompat.checkSelfPermission(c, it) == PackageManager.PERMISSION_GRANTED } ||
     (Build.VERSION.SDK_INT >= 34 && ContextCompat.checkSelfPermission(c, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED)
+
+/** Opens the video player (it also plays network streams) as its own screen of this app; Back returns to where you were. */
+fun openVideoPlayer(context: Context, uri: Uri) {
+    context.launchSafely(Intent(Intent.ACTION_VIEW).setClass(context, dev.wonderdesk.cinema.MainActivity::class.java).setDataAndType(uri, if (uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "rtsp") "video/*" else "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) {}
+}
+
+/** Opens the video editor (trim, rotate, remove sound, shrink, save a frame). */
+fun openVideoEditor(context: Context, uri: Uri) {
+    context.launchSafely(Intent(Intent.ACTION_EDIT).setClass(context, dev.wonderdesk.cinema.MainActivity::class.java).setDataAndType(uri, "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) {}
+}
 
 /** Where you are in the app; survives the window being rebuilt. */
 private object Nav {
@@ -256,9 +270,9 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
     if (selected.isNotEmpty() || album != null) BackHandler { if (selected.isNotEmpty()) selected = emptySet() else album = null }
     WonderApp(needs = APP_NEEDS, appName = "Memories", about = ABOUT,
         tabs = if (selected.isNotEmpty()) emptyList() else listOf(WonderTab("photos", "Photos", WonderIcons.PhotoLibrary), WonderTab("albums", "Albums", WonderIcons.Collections),
-            WonderTab("favorites", "Favourites", WonderIcons.Favorite), WonderTab("videos", "Videos", WonderIcons.Movie)),
+            WonderTab("favorites", "Favourites", WonderIcons.Favorite), WonderTab("videos", "Videos", WonderIcons.Movie), WonderTab("record", "Record", WonderIcons.Videocam)),
         selectedTab = tab, onTab = { tab = it; album = null },
-        title = when { selected.isNotEmpty() -> "${selected.size} selected"; album?.startsWith("ua:") == true -> userAlbums.find { "ua:" + it.id == album }?.name ?: "Album"; album != null -> album!!; tab == "albums" -> "Albums"; tab == "favorites" -> "Favourites"; tab == "videos" -> "Videos"; else -> "Memories" },
+        title = when { selected.isNotEmpty() -> "${selected.size} selected"; album?.startsWith("ua:") == true -> userAlbums.find { "ua:" + it.id == album }?.name ?: "Album"; album != null -> album!!; tab == "albums" -> "Albums"; tab == "favorites" -> "Favourites"; tab == "videos" -> "Videos"; tab == "record" -> "Record screen"; else -> "Memories" },
         onBack = when { selected.isNotEmpty() -> ({ selected = emptySet() }); album != null -> ({ album = null }); else -> null },
         actions = {
             if (selected.isNotEmpty()) {
@@ -272,8 +286,9 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
                 else ToolbarButton(WonderIcons.DriveFileMove, "Move to folder", { moveTo = true })
                 ToolbarButton(WonderIcons.Delete, "Delete", { sender.launch(IntentSenderRequest.Builder(Gallery.trashRequest(context, sel.map { it.uri }).intentSender).build()) })
             } else {
-                ToolbarButton(WonderIcons.Search, "Search", { searching = !searching; if (!searching) q = "" })
-                if (tab != "albums" || album != null) ToolbarButton(if (columns > 3) WonderIcons.ZoomIn else WonderIcons.ZoomOut, "Grid size", { columns = if (columns >= 6) 3 else columns + 1; context.prefs("memories").edit().putInt("cols", columns).apply() })
+                if (tab == "videos") dev.wonderdesk.cinema.CinemaToolbar()
+                if (tab != "videos" && tab != "record") ToolbarButton(WonderIcons.Search, "Search", { searching = !searching; if (!searching) q = "" })
+                if (tab != "videos" && tab != "record" && (tab != "albums" || album != null)) ToolbarButton(if (columns > 3) WonderIcons.ZoomIn else WonderIcons.ZoomOut, "Grid size", { columns = if (columns >= 6) 3 else columns + 1; context.prefs("memories").edit().putInt("cols", columns).apply() })
             }
         },
         menu = if (selected.isNotEmpty()) listOf(WonderMenuItem("Select all", WonderIcons.SelectAll) { selected = base.map { it.id }.toSet() }) else listOf(
@@ -288,8 +303,13 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
             WonderMenuItem(if (LibraryPrefs.onThisDay) "Hide On this day" else "Show On this day", WonderIcons.History) { LibraryPrefs.onThisDay = !LibraryPrefs.onThisDay; context.prefs("memories").edit().putBoolean("onThisDay", LibraryPrefs.onThisDay).apply() },
             WonderMenuItem("Free up space", WonderIcons.DeleteSweep) { showClean = true },
             WonderMenuItem("Trash", WonderIcons.Delete) { showTrash = true },
-        ), settings = { MemoriesSettings() }) {
+        ), settings = { MemoriesSettings(); CinemaSettingsPanels() }) {
         toastRef.value = LocalToast.current
+        if (tab == "videos" || tab == "record") {
+            // The video library, player, editor and screen recorder (what used to be the separate Cinema app). Videos open in the player screen and Back returns here.
+            dev.wonderdesk.cinema.CinemaLibrary(tab, onPlay = { v -> openVideoPlayer(context, v.uri) }, onEdit = { v -> openVideoEditor(context, v.uri) })
+            return@WonderApp
+        }
         if (photos == null) { LoadingPane("Reading your photos and videos", detail = "Looking through every folder on this phone"); return@WonderApp }
         Column(Modifier.fillMaxSize()) {
             if (searching) SearchField(q, { q = it }, "Search names, albums or dates (2024-07)", Modifier.padding(16.dp, 10.dp, 16.dp, 6.dp))
@@ -705,8 +725,10 @@ private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (
         }
         AnimatedVisibility(chrome && current != null, Modifier.align(Alignment.TopCenter), enter = fadeIn() + slideInVertically { -it / 2 }, exit = fadeOut() + slideOutVertically { -it / 2 }) {
             val ph = current ?: return@AnimatedVisibility
-            ViewerTopBar(dayLabel(ph.day), java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(ph.taken)) + " · " + ph.album +
-                if (items.size > 1) " · ${pager.currentPage + 1} of ${items.size}" else "", onBack = onClose) {
+            // Items opened from a folder (Wayfinder, a computer) have no photo date: show the file name and the position in the folder instead.
+            val counter = if (items.size > 1) "${pager.currentPage + 1} of ${items.size}" else ""
+            ViewerTopBar(if (ph.taken <= 0L) ph.name else dayLabel(ph.day),
+                if (ph.taken <= 0L) counter else java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(ph.taken)) + " · " + ph.album + (if (counter.isNotEmpty()) " · $counter" else ""), onBack = onClose) {
                 if (!ph.video) HudButton(WonderIcons.Slideshow, if (slideshow) "Stop slideshow" else "Slideshow", c, 44.dp, tint = if (slideshow) c.accent else c.ink) { slideshow = !slideshow; chrome = !slideshow }
                 HudButton(WonderIcons.Info, "Details", c, 44.dp) { info = true }
             }
@@ -721,11 +743,7 @@ private fun Viewer(list: List<Photo>, start: Int, onClose: () -> Unit, onEdit: (
                         pending = "fav" to ph; sender.launch(IntentSenderRequest.Builder(Gallery.favoriteRequest(context, listOf(ph.uri), !isFav(ph)).intentSender).build()) }
                     if (!ph.video) ViewerAction(WonderIcons.Edit, "Edit") { onEdit(ph.uri) }
                     if (!ph.video) ViewerAction(WonderIcons.Layers, "Studio") { onStudio(ph.uri) }
-                    else if (context.hasApp("dev.wonderdesk.cinema")) ViewerAction(WonderIcons.ContentCut, "Edit") {
-                        context.launchSafely(Intent("dev.wonderdesk.cinema.EDIT").setPackage("dev.wonderdesk.cinema").setDataAndType(ph.uri, "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
-                            context.launchSafely(Intent(Intent.ACTION_VIEW).setPackage("dev.wonderdesk.cinema").setDataAndType(ph.uri, "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) {}
-                        }
-                    }
+                    else ViewerAction(WonderIcons.ContentCut, "Edit") { openVideoEditor(context, ph.uri) }
                     ViewerAction(WonderIcons.Delete, "Delete", danger = true) { pending = "trash" to ph; sender.launch(IntentSenderRequest.Builder(Gallery.trashRequest(context, listOf(ph.uri)).intentSender).build()) }
                 }
             }

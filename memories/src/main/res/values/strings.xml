@@ -3,4 +3,9 @@
     <string name="shortcut_latest">Newest photo</string>
     <string name="shortcut_favourites">Favourites</string>
     <string name="widget_photowidget_desc">A photo frame: On this day, favourites, recent shots or an album</string>
+    <string name="widget_continuewidget_desc">The video you were watching, ready to resume</string>
+    <string name="wp_label">Continue watching</string>
+    <string name="wp_title">Your film</string>
+    <string name="wp_text">Stopped at 42:10</string>
+    <string name="wp_btn">Resume</string>
 </resources>

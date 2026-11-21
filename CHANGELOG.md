@@ -1,5 +1,12 @@
 # Memories changelog
 
+## v0.7.0
+
+- Cinema is now part of Memories. The Videos tab is Cinema's full video library and player (resume, gestures, subtitles, speed, picture-in-picture, network streams, casting, the editor), the Record tab is the screen recorder with clip mode, and everything Memories did before is unchanged
+- The Launcher's floating button, the recording tile and the notification all control the recorder here now, and your videos and recordings stay where they were
+- Opening a video from another app plays it in the full player; opening a photo or video from a folder in Wayfinder or on a computer shows that whole folder to swipe through, with the file name and position at the top
+- Cinema's settings are in Memories' Settings under Playback, Touch controls, Subtitles, Editing and Library
+
 ## v0.6.2
 
 - At night the animated background gets a stronger wash, so text stays easy to read on dark scenes
