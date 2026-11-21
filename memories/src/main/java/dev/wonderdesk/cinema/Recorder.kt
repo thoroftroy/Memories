@@ -135,9 +135,23 @@ class ScreenCapture(
             // A still screen produces no new frames; repeat the last one a few times a second so the video never stalls,
             // instead of re-encoding it at the full frame rate (which keeps the phone busy and warm for nothing).
             setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 250_000L)
+            // Say plainly what the picture is (normal SDR colour, the usual video range) so no phone or player guesses wrong.
+            // Without this, recordings from phones with wide-colour or HDR screens could come out far too dark.
+            setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+            setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+            setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+            setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
         }
         val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        enc.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        // If this phone's encoder refuses the extra colour and profile hints, fall back to the plain settings rather than not recording.
+        try { enc.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE) } catch (e: Exception) {
+            enc.reset()
+            enc.configure(MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
+                setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+                setInteger(MediaFormat.KEY_BIT_RATE, cfg.mbps * 1_000_000); setInteger(MediaFormat.KEY_FRAME_RATE, cfg.fps)
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, if (cfg.clipMode) 1 else 2)
+            }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        }
         surface = enc.createInputSurface()
         enc.start()
         venc = enc

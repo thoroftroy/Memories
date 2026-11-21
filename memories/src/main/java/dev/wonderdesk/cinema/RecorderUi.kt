@@ -176,7 +176,12 @@ class RecordActivity : ComponentActivity() {
         if (!RecorderService.notificationsWork(this)) android.widget.Toast.makeText(this, "Notifications are off for Memories, so the recording is not shown in the notification shade. Turn them on in Cinema's Record tab.", android.widget.Toast.LENGTH_LONG).show()
         askProjection()
     }
-    private fun askProjection() = screen.launch(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())
+    // Android 14 and later offer "A single app" by default, which records only that app's window and leaves everything else black
+    // (calls, overlays, other apps). This is a whole-screen recorder, so the prompt is limited to the entire screen.
+    private fun askProjection() {
+        val mpm = getSystemService(MediaProjectionManager::class.java)
+        screen.launch(if (Build.VERSION.SDK_INT >= 34) mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay()) else mpm.createScreenCaptureIntent())
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
