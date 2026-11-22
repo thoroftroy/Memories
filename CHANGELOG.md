@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.8.0
+
+- The background follows the tab: hearts in Favourites, film symbols in Videos, and in Record a red heartbeat while the screen is being recorded (amber while clip mode only keeps the last moments). Each saved clip gets a burst
+
 ## v0.7.4
 
 - Pictures from a computer through Ripple show a rough preview almost at once, then two sharper ones, while the full picture downloads with a progress bar

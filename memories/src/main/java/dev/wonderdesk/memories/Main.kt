@@ -277,6 +277,20 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
             Text("Name and size show one plain list with no date headings.", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText)
         }
     }, confirmButton = { TextButton(onClick = { showSort = false }) { Text("Close") } })
+    // The scene follows the tab: hearts in Favourites, film symbols in Videos, and in Record a red heartbeat while the screen is
+    // being recorded (amber while clip mode only holds the last moments). A saved clip gets a burst.
+    val rec = dev.wonderdesk.cinema.RecorderState
+    SceneMoodEffect(when (tab) {
+        "favorites" -> SceneMood(hue = 335f, tint = android.graphics.Color.argb(60, 255, 140, 180), glyphs = listOf("♥", "❤", "♡", "✦"))
+        "videos" -> SceneMood(hue = 255f, glyphs = listOf("▶", "■", "●", "▮"))
+        "record" -> when {
+            rec.writing -> SceneMood(hue = 0f, tint = android.graphics.Color.argb(90, 230, 50, 50), energy = 1.5f, pulse = .7f, glyphs = listOf("●", "•", "▮"))
+            rec.running -> SceneMood(hue = 36f, tint = android.graphics.Color.argb(60, 245, 170, 60), energy = 1.2f, pulse = .25f, glyphs = listOf("●", "↺", "•"))
+            else -> SceneMood(glyphs = listOf("●", "■", "▶", "•"))
+        }
+        else -> SceneMood()
+    })
+    LaunchedEffect(rec.saved) { if (rec.saved > 0) WonderMood.celebrate(listOf("🎬", "✦", "★")) }
     WonderApp(needs = APP_NEEDS, appName = "Memories", about = ABOUT,
         tabs = if (selected.isNotEmpty()) emptyList() else listOf(WonderTab("photos", "Photos", WonderIcons.PhotoLibrary), WonderTab("albums", "Albums", WonderIcons.Collections),
             WonderTab("favorites", "Favourites", WonderIcons.Favorite), WonderTab("videos", "Videos", WonderIcons.Movie), WonderTab("record", "Record", WonderIcons.Videocam)),
