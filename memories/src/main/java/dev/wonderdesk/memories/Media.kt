@@ -50,14 +50,37 @@ object Gallery {
     }
 
     private val thumbs = object : LruCache<String, Bitmap>(64 * 1024 * 1024) { override fun sizeOf(key: String, value: Bitmap) = value.byteCount }
-    fun cached(p: Photo, px: Int): Bitmap? = thumbs.get("${p.id}@$px")
+    /** Library photos are cached by their id; pictures from a folder or a computer by their address, since their ids are only positions in that folder. */
+    private fun key(p: Photo, px: Int) = if (p.id >= 0) "${p.id}@$px" else "${p.uri}@$px"
+    fun cached(p: Photo, px: Int): Bitmap? = thumbs.get(key(p, px))
     /** A few decodes at a time: a fast fling doesn't pile up hundreds of reads. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val loader = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(4)
 
     fun thumb(c: Context, p: Photo, px: Int = 256): Bitmap? {
-        val k = "${p.id}@$px"
-        return thumbs.get(k) ?: runCatching { c.contentResolver.loadThumbnail(p.uri, Size(px, px), null) }.getOrNull()?.also { thumbs.put(k, it) }
+        val k = key(p, px)
+        thumbs.get(k)?.let { return it }
+        val b = if (p.id >= 0) runCatching { c.contentResolver.loadThumbnail(p.uri, Size(px, px), null) }.getOrNull() else outsideThumb(c, p, px)
+        return b?.also { thumbs.put(k, it) }
+    }
+
+    /**
+     * A picture or video from a folder or a computer rather than the library: a computer makes its own small preview (a few kilobytes),
+     * a video on the phone gives a frame, and a picture is read at a reduced size.
+     */
+    private fun outsideThumb(c: Context, p: Photo, px: Int): Bitmap? {
+        if (p.uri.authority == "dev.wonderdesk.ripple.link") {
+            runCatching { c.contentResolver.openInputStream(p.uri.buildUpon().appendQueryParameter("thumb", px.toString()).build())?.use { BitmapFactory.decodeStream(it) } }.getOrNull()?.let { return it }
+            if (p.video) return null   // never pull a whole video over the network just for a tile
+        }
+        runCatching { c.contentResolver.loadThumbnail(p.uri, Size(px, px), null) }.getOrNull()?.let { return it }
+        return if (p.video) runCatching {
+            val r = android.media.MediaMetadataRetriever()
+            try {
+                r.setDataSource(c, p.uri)
+                if (android.os.Build.VERSION.SDK_INT >= 27) r.getScaledFrameAtTime(1_000_000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, px, px) else r.frameAtTime
+            } finally { runCatching { r.release() } }
+        }.getOrNull() else load(c, p.uri, px)
     }
 
     /** Full image downsampled to fit [max] pixels on its long edge, rotated by EXIF. */

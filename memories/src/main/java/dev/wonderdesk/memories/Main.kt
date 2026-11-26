@@ -130,6 +130,8 @@ private object Nav {
     /** "Newest photo" from the home-screen shortcut or Pixel Camera: opens once the library has loaded. */
     var latest = mutableStateOf(false)
     val startTab = mutableStateOf<String?>(null)
+    /** Bumped each time a new set of photos is opened, so the viewer starts fresh on it instead of keeping the last folder's page. */
+    val session = mutableIntStateOf(0)
 }
 
 /** What other apps send to open a photo: VIEW from Files and chats, REVIEW from camera apps. */
@@ -168,12 +170,14 @@ fun MemoriesApp() {
                         val video = mime.startsWith("video/") || nm.substringAfterLast('.', "").lowercase() in setOf("mp4", "mkv", "mov", "webm", "3gp", "avi")
                         Photo(-(k + 1L), u, nm, 0L, 0L, 0, 0, "", "", video, 0L, false, mime)
                     }
-                    Nav.fromApp = true; Nav.secure = false; external = null; viewing = list to at.coerceIn(0, list.lastIndex)
+                    Nav.fromApp = true; Nav.secure = false; external = null; editing = null; studio = null; Nav.session.intValue++; viewing = list to at.coerceIn(0, list.lastIndex)
                 } else { Nav.fromApp = true; Nav.secure = i.action == "android.provider.action.REVIEW_SECURE"; Nav.externalMime = i.type; viewing = null; external = i.data }
             }
             Intent.ACTION_EDIT -> { Nav.fromApp = true; editing = i.data }
             CameraLink.ACTION_LATEST -> { Nav.secure = i.getBooleanExtra("secure", false); Nav.fromApp = Nav.secure; editing = null; external = null; Nav.latest.value = true }
             "dev.wonderdesk.memories.FAVOURITES" -> { viewing = null; external = null; Nav.startTab.value = "favorites" }
+            // Opened from the home screen while a photo from another app was still up (you pressed Home instead of Back): start on the library, not that photo.
+            Intent.ACTION_MAIN -> if (Nav.fromApp) { Nav.fromApp = false; Nav.secure = false; viewing = null; external = null; editing = null; studio = null }
         }
     }
     val latest by Nav.latest
@@ -183,7 +187,7 @@ fun MemoriesApp() {
         Nav.latest.value = false
         if (list.isEmpty()) return@LaunchedEffect
         val shown = if (Nav.secure) list.filter { it.taken >= System.currentTimeMillis() - 10 * 60_000 }.ifEmpty { list.take(1) } else list
-        viewing = shown to 0
+        Nav.session.intValue++; viewing = shown to 0
     }
     // A photo from the library (a camera's newest shot) opens in the full timeline, so you can swipe back through older ones.
     LaunchedEffect(external, photos) {
@@ -192,13 +196,14 @@ fun MemoriesApp() {
         val id = u.lastPathSegment?.toLongOrNull() ?: return@LaunchedEffect
         if (u.authority != "media") return@LaunchedEffect
         val idx = list.indexOfFirst { it.id == id }
-        if (idx >= 0) { viewing = (if (Nav.secure) list.filter { it.id == id || it.taken >= System.currentTimeMillis() - 10 * 60_000 } else list).let { l -> l to l.indexOfFirst { it.id == id } }; external = null }
+        if (idx >= 0) { Nav.session.intValue++; viewing = (if (Nav.secure) list.filter { it.id == id || it.taken >= System.currentTimeMillis() - 10 * 60_000 } else list).let { l -> l to l.indexOfFirst { it.id == id } }; external = null }
     }
-    fun closeExternal() { val back = Nav.fromApp; Nav.fromApp = false; Nav.secure = false; if (back) (context as Activity).let { a -> if (a.isTaskRoot) a.finishAndRemoveTask() else a.finish() } }
+    // Opened by another app: closing the photo closes Memories completely (gone from Recents too) and you are back where you were, such as the Wayfinder folder.
+    fun closeExternal() { val back = Nav.fromApp; Nav.fromApp = false; Nav.secure = false; if (back) (context as Activity).finishAndRemoveTask() }
     studio?.let { u -> StudioScreen(u, onClose = { studio = null; tick++; if (viewing == null && external == null) closeExternal() }); return }
     editing?.let { u -> EditorScreen(u, onClose = { editing = null; tick++; if (viewing == null && external == null) closeExternal() }, onStudio = { studio = u; editing = null }); return }
     external?.let { u -> SingleViewer(u, Nav.externalMime, onClose = { external = null; closeExternal() }, onEdit = { editing = u }, onStudio = { studio = u }); return }
-    viewing?.let { (list, i) -> Viewer(list, i, onClose = { viewing = null; tick++; closeExternal() }, onEdit = { editing = it }, onStudio = { studio = it }, secure = Nav.secure); return }
+    viewing?.let { (list, i) -> key(Nav.session.intValue) { Viewer(list, i, onClose = { viewing = null; tick++; closeExternal() }, onEdit = { editing = it }, onStudio = { studio = it }, secure = Nav.secure) }; return }
     if (!ok) {
         WonderApp(appName = "Memories", about = ABOUT) {
             EmptyState("All your photos in one place", "Allow Memories to see the photos and videos on this phone. They stay on your phone.",
@@ -206,7 +211,7 @@ fun MemoriesApp() {
         }
         return
     }
-    Library(photos, onOpen = { list, i -> viewing = list to i }, refresh = { tick++ })
+    Library(photos, onOpen = { list, i -> Nav.session.intValue++; viewing = list to i }, refresh = { tick++ })
 }
 
 /* -------------------------------------------------------- library ------------------------------------------- */
@@ -680,8 +685,8 @@ private fun time(ms: Long) = (ms / 1000).let { "%d:%02d".format(it / 60, it % 60
 @Composable
 private fun Thumb(ph: Photo, modifier: Modifier, px: Int = 256) {
     val context = LocalContext.current
-    var b by remember(ph.id, px) { mutableStateOf(Gallery.cached(ph, px)) }
-    LaunchedEffect(ph.id, px) { if (b == null) b = withContext(Gallery.loader) { Gallery.thumb(context, ph, px) } }
+    var b by remember(ph.uri, px) { mutableStateOf(Gallery.cached(ph, px)) }
+    LaunchedEffect(ph.uri, px) { if (b == null) b = withContext(Gallery.loader) { Gallery.thumb(context, ph, px) } }
     val img = remember(b) { b?.asImageBitmap() }
     Box(modifier.background(Color(0x22888888))) { img?.let { Image(it, ph.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } }
 }
@@ -808,11 +813,11 @@ private fun Filmstrip(items: List<Photo>, current: Int, onPick: (Int) -> Unit) {
 @Composable
 private fun ZoomImage(ph: Photo, onTap: () -> Unit, onDismiss: (() -> Unit)? = null, onFade: (Float) -> Unit = {}) {
     val context = LocalContext.current
-    var bmp by remember(ph.id) { mutableStateOf(Gallery.cached(ph, 512) ?: Gallery.cached(ph, 256)) }
-    var prog by remember(ph.id) { mutableStateOf<Pair<Long, Long>?>(null) }
-    var sharpening by remember(ph.id) { mutableStateOf(false) }
-    val started = remember(ph.id) { System.currentTimeMillis() }
-    LaunchedEffect(ph.id) {
+    var bmp by remember(ph.uri) { mutableStateOf(Gallery.cached(ph, 512) ?: Gallery.cached(ph, 256)) }
+    var prog by remember(ph.uri) { mutableStateOf<Pair<Long, Long>?>(null) }
+    var sharpening by remember(ph.uri) { mutableStateOf(false) }
+    val started = remember(ph.uri) { System.currentTimeMillis() }
+    LaunchedEffect(ph.uri) {
         if (ph.uri.authority == "media") {
             if (bmp == null) bmp = withContext(Dispatchers.IO) { Gallery.thumb(context, ph, 512) }
             bmp = withContext(Dispatchers.IO) { Gallery.load(context, ph.uri) ?: bmp }
@@ -843,7 +848,7 @@ private fun InfoDialog(ph: Photo, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val p = wonderPalette()
     var info by remember { mutableStateOf<Gallery.Info?>(null) }
-    LaunchedEffect(ph.id) { info = withContext(Dispatchers.IO) { Gallery.info(context, ph) } }
+    LaunchedEffect(ph.uri) { info = withContext(Dispatchers.IO) { Gallery.info(context, ph) } }
     WonderDialog(onDismissRequest = onDismiss, title = { Text("Details") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             info?.rows?.forEach { (k, v) -> Row { Text(k, Modifier.width(90.dp), color = p.secondaryText); Text(v) } } ?: AquaProgress(null, Modifier.fillMaxWidth())

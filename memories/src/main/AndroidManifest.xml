@@ -34,6 +34,7 @@
         </activity>
         <!-- The video player, editor and library (what used to be the Cinema app). Plays videos opened from anywhere, in a picture-in-picture window too. -->
         <activity android:name="dev.wonderdesk.cinema.MainActivity" android:exported="true" android:resizeableActivity="true" android:launchMode="singleTask" android:label="Videos"
+            android:taskAffinity="dev.wonderdesk.memories.player" android:autoRemoveFromRecents="true"
             android:supportsPictureInPicture="true" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden">
             <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" /><data android:scheme="file" /><data android:mimeType="video/*" /></intent-filter>
