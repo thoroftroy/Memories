@@ -295,7 +295,17 @@ private fun Library(photos: List<Photo>?, onOpen: (List<Photo>, Int) -> Unit, re
         }
         else -> SceneMood()
     })
-    LaunchedEffect(rec.saved) { if (rec.saved > 0) WonderMood.celebrate(listOf("🎬", "✦", "★")) }
+    // The frames drifting in the scene hold your own photos: the newest ones, or your favourites in Favourites. Recording, a red light blinks.
+    val sceneCtx = LocalContext.current
+    SceneFeedScope()
+    LaunchedEffect(tab == "favorites") {
+        val favs = tab == "favorites"
+        SceneFeed.pictures = withContext(Dispatchers.IO) { runCatching { Gallery.all(sceneCtx).filter { !it.video && (!favs || it.favorite) }.take(7).mapNotNull { Gallery.thumb(sceneCtx, it, 220) } }.getOrDefault(emptyList()) }
+    }
+    SideEffect { SceneFeed.state = if (tab == "record" && rec.writing) "recording" else "" }
+    // Only a recording saved while you are here: the count outlives the screen, so opening Memories must not celebrate an old one.
+    var savedSeen by remember { mutableIntStateOf(rec.saved) }
+    LaunchedEffect(rec.saved) { if (rec.saved > savedSeen) WonderMood.celebrate(listOf("🎬", "✦", "★")); savedSeen = rec.saved }
     WonderApp(needs = APP_NEEDS, appName = "Memories", about = ABOUT,
         tabs = if (selected.isNotEmpty()) emptyList() else listOf(WonderTab("photos", "Photos", WonderIcons.PhotoLibrary), WonderTab("albums", "Albums", WonderIcons.Collections),
             WonderTab("favorites", "Favourites", WonderIcons.Favorite), WonderTab("videos", "Videos", WonderIcons.Movie), WonderTab("record", "Record", WonderIcons.Videocam)),
