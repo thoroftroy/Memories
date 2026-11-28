@@ -130,36 +130,36 @@ fun RecorderScreen() {
             }
         }
         Panel(title = "Mode", footer = "Clip mode never saves anything on its own. It is always recording into a short memory buffer and only keeps what you clip.") {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp).scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("Record", !cfg.clipMode, { change(cfg.copy(clipMode = false)) }, WonderIcons.Videocam)
                 Chip("Clip mode", cfg.clipMode, { change(cfg.copy(clipMode = true)) }, WonderIcons.ContentCut)
             }
             if (cfg.clipMode) {
                 PanelDivider()
                 Text("How far back a clip reaches", Modifier.padding(start = 16.dp, top = 10.dp), style = MaterialTheme.typography.labelLarge)
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(5, 10, 15, 30, 60).forEach { s -> Chip("$s s", cfg.bufferSec == s, { change(cfg.copy(bufferSec = s)) }) }
                 }
             }
         }
         Panel(title = "Quality") {
             Text("Picture size", Modifier.padding(start = 16.dp, top = 10.dp), style = MaterialTheme.typography.labelLarge)
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(100 to "Full", 75 to "Medium", 50 to "Small").forEach { (v, l) -> Chip(l, cfg.scalePct == v, { change(cfg.copy(scalePct = v)) }) }
             }
             PanelDivider()
             Text("Frames per second", Modifier.padding(start = 16.dp, top = 10.dp), style = MaterialTheme.typography.labelLarge)
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(24, 30, 60).forEach { f -> Chip("$f", cfg.fps == f, { change(cfg.copy(fps = f)) }) }
             }
             PanelDivider()
             Text("Detail (data per second)", Modifier.padding(start = 16.dp, top = 10.dp), style = MaterialTheme.typography.labelLarge)
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(4 to "Light", 8 to "Normal", 16 to "High", 32 to "Best").forEach { (v, l) -> Chip(l, cfg.mbps == v, { change(cfg.copy(mbps = v)) }) }
             }
         }
         Panel(title = "Sound", footer = "Phone sound records what is playing through the speaker, such as videos and calls. Apps that block it stay silent.") {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp).scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("No sound", cfg.audio == 0, { change(cfg.copy(audio = 0)) })
                 Chip("Phone sound", cfg.audio == 2, { change(cfg.copy(audio = 2)) }, WonderIcons.Movie)
                 Chip("Microphone", cfg.audio == 1, { change(cfg.copy(audio = 1)) }, WonderIcons.Mic)

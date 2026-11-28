@@ -519,7 +519,7 @@ private fun OnThisDayRow(groups: List<Pair<Int, List<Photo>>>, onOpen: (List<Pho
     val p = wonderPalette()
     Column(Modifier.padding(top = 10.dp, bottom = 4.dp)) {
         Text("On this day", Modifier.padding(start = 12.dp, bottom = 8.dp), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
-        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.scrollRow().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             groups.forEach { (years, list) ->
                 Box(Modifier.size(132.dp, 176.dp).shadow(6.dp, RoundedCornerShape(p.panelRadius + 4.dp)).clip(RoundedCornerShape(p.panelRadius + 4.dp)).clickable { onOpen(list) }) {
                     Thumb(list.firstOrNull { !it.video } ?: list.first(), Modifier.fillMaxSize(), 384)
@@ -1023,7 +1023,7 @@ private fun EditorScreen(uri: Uri, onClose: () -> Unit, onStudio: () -> Unit = {
             Column(Modifier.background(p.panel).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 when (tab) {
                     EditTab.Crop -> {
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf<Pair<String, Float?>>("Free" to null, "Square" to 1f, "4:3" to 4f / 3, "3:2" to 1.5f, "16:9" to 16f / 9, "9:16" to 9f / 16).forEach { (l, a) ->
                                 Chip(l, aspect == a, {
                                     aspect = a
@@ -1049,7 +1049,7 @@ private fun EditorScreen(uri: Uri, onClose: () -> Unit, onStudio: () -> Unit = {
                             }
                         }
                     }
-                    EditTab.Filters -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    EditTab.Filters -> Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         val small = remember(preview) { preview?.let { Bitmap.createScaledBitmap(it, 160, (160f * it.height / it.width).toInt().coerceAtLeast(1), true) } }
                         Filter.entries.forEach { f ->
                             Column(Modifier.clickable { filter = f }, horizontalAlignment = Alignment.CenterHorizontally) {

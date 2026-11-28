@@ -478,7 +478,7 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
             // ---- tools
             CompositionLocalProvider(LocalContentColor provides p.text) {
             Column(Modifier.heightIn(max = 330.dp).background(p.panel).verticalScroll(rememberScrollState()).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Tool.entries.forEach { t -> Chip(t.label, tool == t, { tool = t }) }
                 }
                 when (tool) {
@@ -531,7 +531,7 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                             l.bmp.setPixels(a, 0, w, 0, 0, w, h); if (out !== l.bmp) out.recycle(); d.touch()
                         }
                         fun colourFx(l: Layer, cm: android.graphics.ColorMatrix) = applyTo(l) { src -> Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888).also { o -> AndroidCanvas(o).drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(cm) }) } }
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             WButton("Apply", { sel?.let { colourFx(it, adjustMatrix(aBright, aContrast, aSat, aWarm)); aBright = 0f; aContrast = 0f; aSat = 0f; aWarm = 0f } }, kind = ButtonKind.Primary, icon = WonderIcons.Check, enabled = sel != null)
                             WButton("Black and white", { sel?.let { colourFx(it, android.graphics.ColorMatrix().apply { setSaturation(0f) }) } }, enabled = sel != null)
                             WButton("Sepia", { sel?.let { colourFx(it, android.graphics.ColorMatrix().apply { setSaturation(0f); postConcat(android.graphics.ColorMatrix(floatArrayOf(1.1f, 0f, 0f, 0f, 20f, 0f, .95f, 0f, 0f, 8f, 0f, 0f, .75f, 0f, -10f, 0f, 0f, 0f, 1f, 0f))) }) } }, enabled = sel != null)
@@ -544,14 +544,14 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                             if (m != null) { val o = IntArray(w * h); l.bmp.getPixels(o, 0, w, 0, 0, w, h); for (i in a.indices) if (m[i].toInt() == 0) a[i] = o[i] }
                             l.bmp.setPixels(a, 0, w, 0, 0, w, h); out.recycle(); d.touch(); working = null } } }, enabled = sel != null && working == null)
                         Text("Blend with the layers under it", style = MaterialTheme.typography.labelLarge)
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { BLENDS.forEachIndexed { i, (n, _) -> Chip(n, sel?.blend == i, { sel?.let { d.snapshot(); it.blend = i; d.touch() } }) } }
+                        Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(6.dp)) { BLENDS.forEachIndexed { i, (n, _) -> Chip(n, sel?.blend == i, { sel?.let { d.snapshot(); it.blend = i; d.touch() } }) } }
                     }
                     Tool.Box -> Text("Drag over the layer to select a rectangle.", style = MaterialTheme.typography.bodySmall, color = p.secondaryText)
                     Tool.Move -> Text("Drag to move the selected layer. Pinch to resize, twist to turn.", style = MaterialTheme.typography.bodySmall, color = p.secondaryText)
                 }
                 val l = d.sel()
                 if (d.mask != null && l != null && l.id == d.maskLayer) {
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         WButton("Delete selection", {
                             val m = d.mask ?: return@WButton
                             d.snapshot(l)
@@ -608,7 +608,7 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                         }
                     }
                 }
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     WButton("Add photo", { addPhoto.launch(arrayOf("image/*")) }, icon = WonderIcons.Image)
                     WButton("Add text", { textAsk = true }, icon = WonderIcons.Edit)
                     WButton("New layer", { d.snapshot(); d.add("Layer ${d.nextId}", Bitmap.createBitmap(d.w, d.h, Bitmap.Config.ARGB_8888)) }, icon = WonderIcons.Layers)
@@ -631,7 +631,7 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
                     Slider(l.alpha, { l.alpha = it; d.touch() }, Modifier.weight(1f), valueRange = 0f..1f, onValueChangeFinished = { })
                     Text("${(l.alpha * 100).toInt()}%", Modifier.width(44.dp), style = MaterialTheme.typography.labelSmall)
                 }
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Save as", style = MaterialTheme.typography.labelLarge)
                     Chip("PNG (keeps see-through)", png, { png = true; context.getSharedPreferences("memories", android.content.Context.MODE_PRIVATE).edit().putBoolean("studioPng", true).apply() })
                     Chip("JPEG (smaller)", !png, { png = false; context.getSharedPreferences("memories", android.content.Context.MODE_PRIVATE).edit().putBoolean("studioPng", false).apply() })
@@ -646,7 +646,7 @@ fun StudioScreen(uri: android.net.Uri, onClose: () -> Unit) {
 @Composable
 private fun ColorRow(color: Int, onPick: (Int) -> Unit) {
     val p = wonderPalette()
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         listOf(0xFFE5483C, 0xFFF2A516, 0xFFFFE14D, 0xFF2E9E44, 0xFF1E7FE8, 0xFF8E44AD, 0xFFFFFFFF, 0xFF8A8F98, 0xFF1B1D21).forEach { c ->
             Box(Modifier.size(30.dp).clip(CircleShape).background(Color(c)).border(if (color == c.toInt()) 3.dp else 1.dp, if (color == c.toInt()) p.accent else p.panelBorder, CircleShape).clickable { onPick(c.toInt()) })
         }

@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.9.3
+
+- Rows that scroll sideways (chips, filters, tabs) now fade at the edge where there is more, show a small arrow you can tap, and nudge once when first shown, so it is clear there is more to scroll to
+
 ## v0.9.2
 
 - Recordings started from the Record tab capture the whole screen again. Android's prompt was opening on "A single app", which records only one app's window and leaves everything else black, so recordings of calls came out almost entirely dark. Now it offers only the entire screen, as recording from the tile or the Launcher button already did. Checked with three clips over three different apps: each is its own, bright and complete

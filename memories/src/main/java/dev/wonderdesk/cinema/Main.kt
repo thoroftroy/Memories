@@ -230,7 +230,7 @@ fun CinemaLibrary(section: String, onPlay: (Video) -> Unit, onEdit: (Video) -> U
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SearchField(q, { q = it }, "Search ${all.size} videos")
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("Newest", "Name", "Longest", "Largest").forEachIndexed { i, s -> Chip(s, sort == i, { sort = i }) }
                 }
             }
@@ -282,14 +282,14 @@ fun androidx.compose.foundation.layout.ColumnScope.CinemaSettingsPanels() {
                 var step by remember { mutableIntStateOf(context.cInt("seekStep", 10)) }
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text("Skip button and double-tap jump", style = MaterialTheme.typography.labelLarge)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(5, 10, 15, 30, 60).forEach { v -> Chip("$v s", step == v, { step = v; context.prefs("cinema").edit().putInt("seekStep", v).apply() }) } }
+                    Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(5, 10, 15, 30, 60).forEach { v -> Chip("$v s", step == v, { step = v; context.prefs("cinema").edit().putInt("seekStep", v).apply() }) } }
                     Text("Applies the next time you open a video.", style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText)
                 }
                 PanelDivider()
                 var spd by remember { mutableFloatStateOf(context.prefs("cinema").getFloat("defaultSpeed", 1f)) }
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text("Starting speed", style = MaterialTheme.typography.labelLarge)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(.5f, .75f, 1f, 1.25f, 1.5f, 2f).forEach { v -> Chip(if (v == 1f) "Normal" else "${v}x", spd == v, { spd = v; context.prefs("cinema").edit().putFloat("defaultSpeed", v).apply() }) } }
+                    Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(.5f, .75f, 1f, 1.25f, 1.5f, 2f).forEach { v -> Chip(if (v == 1f) "Normal" else "${v}x", spd == v, { spd = v; context.prefs("cinema").edit().putFloat("defaultSpeed", v).apply() }) } }
                 }
                 PanelDivider()
                 var fit by remember { mutableIntStateOf(context.cInt("defaultFit", 0)) }
@@ -301,7 +301,7 @@ fun androidx.compose.foundation.layout.ColumnScope.CinemaSettingsPanels() {
                 var hide by remember { mutableIntStateOf(context.cInt("hideDelay", 35)) }
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text("Hide the controls after", style = MaterialTheme.typography.labelLarge)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(20 to "2 s", 35 to "3.5 s", 50 to "5 s", 80 to "8 s", 0 to "Never").forEach { (v, n) -> Chip(n, hide == v, { hide = v; context.prefs("cinema").edit().putInt("hideDelay", v).apply() }) } }
+                    Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(20 to "2 s", 35 to "3.5 s", 50 to "5 s", 80 to "8 s", 0 to "Never").forEach { (v, n) -> Chip(n, hide == v, { hide = v; context.prefs("cinema").edit().putInt("hideDelay", v).apply() }) } }
                 }
             }
             Panel(title = "Touch controls", footer = "Turn off any gesture you keep triggering by accident.") {
@@ -339,13 +339,13 @@ fun androidx.compose.foundation.layout.ColumnScope.CinemaSettingsPanels() {
             Panel(title = "Editing", footer = "What the editor starts with. You can still change it for each video.") {
                 var os by remember { mutableIntStateOf(context.cInt("outSize", 0)) }
                 Column(Modifier.padding(16.dp, 10.dp)) { Text("Save videos at", style = MaterialTheme.typography.labelLarge)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Original", "1080p", "720p", "480p").forEachIndexed { i, n -> Chip(n, os == i, { os = i; context.prefs("cinema").edit().putInt("outSize", i).apply() }) } } }
+                    Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Original", "1080p", "720p", "480p").forEachIndexed { i, n -> Chip(n, os == i, { os = i; context.prefs("cinema").edit().putInt("outSize", i).apply() }) } } }
             }
             Panel(title = "Library") {
                 var minLen by remember { mutableIntStateOf(context.cInt("minLen", 0)) }
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text("Hide videos shorter than", style = MaterialTheme.typography.labelLarge)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "Show all", 5 to "5 s", 15 to "15 s", 60 to "1 min").forEach { (v, n) -> Chip(n, minLen == v, { minLen = v; context.prefs("cinema").edit().putInt("minLen", v).apply() }) } }
+                    Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(0 to "Show all", 5 to "5 s", 15 to "15 s", 60 to "1 min").forEach { (v, n) -> Chip(n, minLen == v, { minLen = v; context.prefs("cinema").edit().putInt("minLen", v).apply() }) } }
                     Text("Pull to refresh the library after changing this.", style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText)
                 }
             }
@@ -632,7 +632,7 @@ private fun PlayerScreen(uri: Uri, title: String, onClose: () -> Unit, onEdit: (
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${"%.2f".format(speed)}×", style = MaterialTheme.typography.headlineSmall)
                 Slider(speed, { speed = (it * 20).toInt() / 20f; player.playbackParameters = PlaybackParameters(speed) }, valueRange = .25f..3f)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(.5f, .75f, 1f, 1.25f, 1.5f, 2f).forEach { s -> Chip("${s}×", speed == s, { speed = s; player.playbackParameters = PlaybackParameters(s) }) }
                 }
             }
@@ -893,7 +893,7 @@ private fun EditorScreen(uri: Uri, title: String, onClose: () -> Unit) {
                         Text("New length " + timeText(keptMs), style = MaterialTheme.typography.labelMedium, color = p.accent)
                     }
                     segs.getOrNull(selected)?.let { sg -> Text("Selected: ${srcs[sg.src].name}, ${timeText(sg.start)} to ${timeText(sg.end)}", style = MaterialTheme.typography.bodySmall, color = p.secondaryText, maxLines = 1) }
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth().scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         WButton("Add video", { pickClip.launch(arrayOf("video/*")) }, icon = WonderIcons.Add, kind = ButtonKind.Primary)
                         WButton("Split here", { split() }, icon = WonderIcons.ContentCut)
                         val sel = segs.getOrNull(selected)
@@ -948,7 +948,7 @@ private fun EditorScreen(uri: Uri, title: String, onClose: () -> Unit) {
                     SwitchRow("Remove the original sound", mute, { mute = it }, icon = WonderIcons.VolumeUp, tint = Color(0xFFE5483C), help = "Mutes the video's own audio so you can use your own.")
                     SliderRow("Original volume", volume, 0f..2f, { volume = it }) { "${(it * 100).toInt()}%" }
                     Text("Speed", style = MaterialTheme.typography.labelLarge)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.scrollRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(.5f, .75f, 1f, 1.5f, 2f).forEach { v -> Chip(if (v == 1f) "Normal" else "${v}x", speed == v, { speed = v }) }
                     }
                     PanelDivider(inset = 0.dp)
