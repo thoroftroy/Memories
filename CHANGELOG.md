@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.9.1
+
+- The moving background holds still while Battery Saver is on, so it uses next to no power then. It still changes with what the app is doing
+
 ## v0.9.0
 
 - The picture frames drifting in the background hold your own photos: the newest, or your favourites in Favourites. While the screen is being recorded a red light blinks
