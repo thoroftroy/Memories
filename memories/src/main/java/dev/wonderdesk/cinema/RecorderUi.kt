@@ -58,7 +58,11 @@ fun RecorderScreen() {
         if (r.resultCode == Activity.RESULT_OK && d != null) RecorderService.start(c, r.resultCode, d)
         else RecorderState.message = "Recording was not allowed"
     }
-    fun askScreen() = capture.launch(c.getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())
+    // Ask for the whole screen. Android's plain prompt starts on "A single app", which records one window and leaves
+    // everything else black: that is why recordings of calls came out dark.
+    fun askScreen() = c.getSystemService(MediaProjectionManager::class.java).let { mpm ->
+        capture.launch(if (Build.VERSION.SDK_INT >= 34) mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay()) else mpm.createScreenCaptureIntent())
+    }
     var warnNotes by remember { mutableStateOf(false) }
     var skipWarn by remember { mutableStateOf(false) }
     val perms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { if (!skipWarn && !RecorderService.notificationsWork(c)) warnNotes = true else askScreen() }

@@ -1,5 +1,9 @@
 # Memories changelog
 
+## v0.9.2
+
+- Recordings started from the Record tab capture the whole screen again. Android's prompt was opening on "A single app", which records only one app's window and leaves everything else black, so recordings of calls came out almost entirely dark. Now it offers only the entire screen, as recording from the tile or the Launcher button already did. Checked with three clips over three different apps: each is its own, bright and complete
+
 ## v0.9.1
 
 - The moving background holds still while Battery Saver is on, so it uses next to no power then. It still changes with what the app is doing
